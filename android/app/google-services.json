@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "666945895085",
+    "project_id": "runiq-dev",
+    "storage_bucket": "runiq-dev.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:666945895085:android:28f3c0ddea5b68b18fe424",
+        "android_client_info": {
+          "package_name": "com.runiq.dev"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "666945895085-obeesr0kbhk7tb56gcb6l4eamk7lcpk6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCtiZp4GC-oxj-Qbqf6OYgYu23rsrKCXHw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "666945895085-obeesr0kbhk7tb56gcb6l4eamk7lcpk6.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
