@@ -1,0 +1,62 @@
+export const Colors = {
+  PRIMARY_BG: '#FFFFFF',
+  SECONDARY_BG: '#F4F4F5',
+  SURFACE: '#18181B',
+  PRIMARY_TEXT: '#09090B',
+  SECONDARY_TEXT: '#71717A',
+  MUTED_TEXT: '#A1A1AA',
+  ACCENT: '#E94560',
+  ACCENT_SECONDARY: '#0F3460',
+  SUCCESS: '#10B981',
+  WARNING: '#F59E0B',
+  BORDER: '#E4E4E7',
+} as const;
+
+export const Typography = {
+  fontFamily: 'Inter',
+  hero: {
+    fontSize: 36,
+    fontWeight: '700' as const,
+  },
+  screenTitle: {
+    fontSize: 26,
+    fontWeight: '600' as const,
+  },
+  sectionHeader: {
+    fontSize: 19,
+    fontWeight: '600' as const,
+  },
+  body: {
+    fontSize: 15,
+    fontWeight: '400' as const,
+  },
+  caption: {
+    fontSize: 12,
+    fontWeight: '400' as const,
+  },
+  badgeName: {
+    fontSize: 13,
+    fontWeight: '700' as const,
+  },
+  stats: {
+    fontSize: 28,
+    fontWeight: '700' as const,
+    fontVariant: ['tabular-nums'] as const,
+  },
+} as const;
+
+export const Spacing = {
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
+  xxl: 48,
+} as const;
+
+export const BorderRadius = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  full: 999,
+} as const;
