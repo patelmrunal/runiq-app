@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /users/{userId} {
+      allow read: if request.auth.uid == userId
+        || isBuddy(request.auth.uid, userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/runLog/{runId} {
+      allow create: if request.auth.uid == userId
+        && validRunData(request.resource.data);
+      allow read: if request.auth.uid == userId;
+      allow update, delete: if false;
+    }
+
+    match /users/{userId}/badges/{badgeId} {
+      allow read: if request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    match /leaderboard/{city}/weeks/{weekId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    match /config/{doc} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    match /adminQueue/{document=**} {
+      allow read, write: if false;
+    }
+
+    function isBuddy(uid, targetUid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data.buddyUid == targetUid;
+    }
+
+    function validRunData(data) {
+      return data.distance is number && data.distance > 0
+        && data.duration is number && data.duration > 0
+        && data.startTime is timestamp
+        && data.status == "pending";
+    }
+  }
+}
