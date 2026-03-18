@@ -4,10 +4,20 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import auth from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
+import { createUserDocument } from '../services/userService';
 import LoginScreen from '../screens/auth/LoginScreen';
 import RegisterScreen from '../screens/auth/RegisterScreen';
 import SplashScreen from '../screens/SplashScreen';
+import {
+  ProfilePhotoScreen,
+  LocationPermissionScreen,
+  QuestionnaireScreen,
+  WelcomeScreen,
+} from '../screens/onboarding';
+import { DashboardScreen } from '../screens/dashboard';
 
 // ─── Placeholder (swap out as real screens are built) ──────────────────────────
 
@@ -23,15 +33,16 @@ const PlaceholderScreen = ({ route }: { route: any }) => (
 // ─── Param lists ───────────────────────────────────────────────────────────────
 
 export type OnboardingStackParamList = {
+  ProfilePhoto: undefined;
   LocationPermission: undefined;
   Questionnaire: undefined;
+  Welcome: undefined;
 };
 
 export type AuthStackParamList = {
   Splash: undefined;
   Login: undefined;
   Register: undefined;
-  Onboarding: undefined;
 };
 
 export type TabParamList = {
@@ -52,6 +63,7 @@ export type MainStackParamList = {
 
 export type RootStackParamList = {
   Auth: undefined;
+  Onboarding: undefined;
   Main: undefined;
 };
 
@@ -77,22 +89,27 @@ const OnboardingStack = createNativeStackNavigator<OnboardingStackParamList>();
 const MainStack = createNativeStackNavigator<MainStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
 
-// ─── Tab icons ─────────────────────────────────────────────────────────────────
+// ─── Tab icon names ────────────────────────────────────────────────────────────
 
-const TAB_ICONS: Record<string, string> = {
-  Dashboard: '🏠',
-  Run: '▶️',
-  Profile: '👤',
-  More: '⋯',
+const TAB_ICON_NAMES: Record<keyof TabParamList, string> = {
+  Dashboard: 'view-dashboard',
+  Run: 'run-fast',
+  Profile: 'account-circle',
+  More: 'dots-grid',
 };
 
 // ─── Onboarding stack ──────────────────────────────────────────────────────────
 
 function OnboardingNavigator() {
   return (
-    <OnboardingStack.Navigator screenOptions={{ headerShown: false }}>
-      <OnboardingStack.Screen name="LocationPermission" component={PlaceholderScreen} />
-      <OnboardingStack.Screen name="Questionnaire" component={PlaceholderScreen} />
+    <OnboardingStack.Navigator
+      screenOptions={{ headerShown: false }}
+      initialRouteName="LocationPermission"
+    >
+      <OnboardingStack.Screen name="LocationPermission" component={LocationPermissionScreen} />
+      <OnboardingStack.Screen name="Questionnaire" component={QuestionnaireScreen} />
+      <OnboardingStack.Screen name="ProfilePhoto" component={ProfilePhotoScreen} />
+      <OnboardingStack.Screen name="Welcome" component={WelcomeScreen} />
     </OnboardingStack.Navigator>
   );
 }
@@ -105,7 +122,6 @@ function AuthNavigator() {
       <AuthStack.Screen name="Splash" component={SplashScreen} />
       <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="Register" component={RegisterScreen} />
-      <AuthStack.Screen name="Onboarding" component={OnboardingNavigator} />
     </AuthStack.Navigator>
   );
 }
@@ -125,11 +141,15 @@ function BottomTabNavigator() {
         tabBarActiveTintColor: '#E94560',
         tabBarInactiveTintColor: '#71717A',
         tabBarIcon: ({ color }) => (
-          <Text style={{ fontSize: 20, color }}>{TAB_ICONS[route.name]}</Text>
+          <MaterialCommunityIcons
+            name={TAB_ICON_NAMES[route.name]}
+            size={24}
+            color={color}
+          />
         ),
       })}
     >
-      <Tab.Screen name="Dashboard" component={PlaceholderScreen} />
+      <Tab.Screen name="Dashboard" component={DashboardScreen} />
       <Tab.Screen
         name="Run"
         component={PlaceholderScreen}
@@ -185,24 +205,77 @@ function MainNavigator() {
 
 export default function AppNavigator() {
   const [user, setUser] = useState<any>(null);
+  const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null);
   const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
     const unsubscribe = auth().onAuthStateChanged((firebaseUser) => {
       setUser(firebaseUser);
-      setInitializing(false);
+      if (!firebaseUser) {
+        setOnboardingComplete(null);
+        setInitializing(false);
+      }
     });
     return unsubscribe;
   }, []);
 
-  if (initializing) return null;
+  // Listen to user document for onboarding changes
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const unsubscribe = firestore()
+      .collection('users')
+      .doc(user.uid)
+      .onSnapshot(
+        async (doc) => {
+          const data = doc.data();
+
+          // If document doesn't exist, create it automatically
+          if (!data) {
+            console.log('[AppNavigator] User document missing, creating...');
+            try {
+              // Derive username from email if not available
+              const email = user.email || '';
+              const username = email.split('@')[0] || 'user';
+              const displayName = user.displayName || username;
+
+              await createUserDocument(user.uid, email, username, displayName);
+              // The listener will fire again after document creation
+              return;
+            } catch (error) {
+              console.error('[AppNavigator] Failed to create user document:', error);
+              setOnboardingComplete(false);
+              setInitializing(false);
+              return;
+            }
+          }
+
+          const hasCompletedOnboarding = !!data?.onboarding?.primaryGoal;
+          setOnboardingComplete(hasCompletedOnboarding);
+          setInitializing(false);
+        },
+        (error) => {
+          console.error('[AppNavigator] Firestore listener error:', error);
+          setOnboardingComplete(false);
+          setInitializing(false);
+        }
+      );
+
+    return unsubscribe;
+  }, [user]);
+
+  if (initializing) {
+    return null;
+  }
 
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
-      {user ? (
+      {!user ? (
+        <RootStack.Screen name="Auth" component={AuthNavigator} />
+      ) : onboardingComplete ? (
         <RootStack.Screen name="Main" component={MainNavigator} />
       ) : (
-        <RootStack.Screen name="Auth" component={AuthNavigator} />
+        <RootStack.Screen name="Onboarding" component={OnboardingNavigator} />
       )}
     </RootStack.Navigator>
   );

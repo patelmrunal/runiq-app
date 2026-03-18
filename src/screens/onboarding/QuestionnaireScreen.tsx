@@ -7,7 +7,6 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { CommonActions } from '@react-navigation/native';
 import firestore, { serverTimestamp } from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import type { OnboardingScreenProps } from '../../navigation';
@@ -33,7 +32,7 @@ interface Question<T extends string> {
 // ─── Questions config ──────────────────────────────────────────────────────────
 
 const Q1: Question<RunFrequency> = {
-  text: 'How often do you run currently?',
+  text: 'How often do you currently run?',
   options: [
     { label: 'Never', value: 'never' },
     { label: 'Sometimes', value: 'sometimes' },
@@ -53,10 +52,10 @@ const Q2: Question<PreferredTime> = {
 const Q3: Question<PrimaryGoal> = {
   text: "What's your main goal?",
   options: [
-    { label: 'Get fit', value: 'fitness' },
-    { label: 'Build a habit', value: 'habit' },
-    { label: 'Lose weight', value: 'weight' },
-    { label: 'Meet other runners', value: 'community' },
+    { label: 'Build Fitness', value: 'fitness' },
+    { label: 'Build a Habit', value: 'habit' },
+    { label: 'Lose Weight', value: 'weight' },
+    { label: 'Find Community', value: 'community' },
   ],
 };
 
@@ -106,13 +105,13 @@ export default function QuestionnaireScreen({ navigation }: Props) {
             'onboarding.completedAt': serverTimestamp(),
           });
       }
-    } catch {
-      // Non-blocking — proceed to app even if write fails
+      // DO NOT navigate here. AppNavigator's Firestore listener
+      // will detect onboarding completion and automatically show MainStack.
+    } catch (error) {
+      console.error('[Questionnaire] Save failed:', error);
+      // Non-blocking — proceed anyway
     } finally {
       setSaving(false);
-      navigation.dispatch(
-        CommonActions.reset({ index: 0, routes: [{ name: 'Main' as never }] }),
-      );
     }
   }
 

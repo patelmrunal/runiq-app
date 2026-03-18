@@ -153,7 +153,8 @@ export default function RegisterScreen({ navigation }: Props) {
         email: form.email.trim(),
         password: form.password,
       });
-      navigation.navigate('Onboarding');
+      // DO NOT navigate here. AppNavigator's onAuthStateChanged
+      // will automatically swap to MainStack when user is created.
     } catch (err: unknown) {
       setError((err as Error).message.replace('Registration failed: ', ''));
     } finally {

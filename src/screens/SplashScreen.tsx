@@ -6,7 +6,6 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import auth from '@react-native-firebase/auth';
 
 // ─── Local param list (mirrors AuthStackParamList in AppNavigator) ──────────────
 
@@ -23,36 +22,15 @@ type Props = NativeStackScreenProps<AuthParamList, 'Splash'>;
 
 export default function SplashScreen({ navigation }: Props) {
   useEffect(() => {
-    let mounted = true;
-    let firebaseUnsubscribe: (() => void) | null = null;
-
-    // Resolves with the first auth state emission
-    const authPromise = new Promise<ReturnType<typeof auth>['currentUser']>(
-      (resolve) => {
-        firebaseUnsubscribe = auth().onAuthStateChanged((user) => {
-          resolve(user);
-        });
-      },
-    );
-
-    // Minimum display time — both must complete before we redirect
-    const minDelay = new Promise<void>((resolve) => {
-      setTimeout(resolve, 1500);
-    });
-
-    Promise.all([authPromise, minDelay]).then(([user]) => {
-      if (!mounted) return;
-      if (user) {
-        // navigate() traverses up the navigator tree to reach RootStack's 'Main'
-        navigation.navigate('Main' as never);
-      } else {
-        navigation.replace('Login');
-      }
-    });
+    // Show splash for minimum display time, then navigate to Login.
+    // AppNavigator's onAuthStateChanged will automatically handle
+    // switching to Main stack if user is already authenticated.
+    const timer = setTimeout(() => {
+      navigation.replace('Login');
+    }, 1500);
 
     return () => {
-      mounted = false;
-      firebaseUnsubscribe?.();
+      clearTimeout(timer);
     };
   }, [navigation]);
 

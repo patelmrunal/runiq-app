@@ -1,5 +1,5 @@
 import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
-import firestore, { serverTimestamp } from '@react-native-firebase/firestore';
+import { createUserDocument } from '../userService';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -22,29 +22,8 @@ export async function registerWithEmail({
     const credential = await auth().createUserWithEmailAndPassword(email, password);
     const { uid } = credential.user;
 
-    await firestore()
-      .collection('users')
-      .doc(uid)
-      .set({
-        uid,
-        email,
-        username,
-        displayName,
-        photoURL: null,
-        tier: 'basic',
-        level: 1,
-        currentStreak: 0,
-        longestStreak: 0,
-        shieldsAvailable: 1,
-        dnaType: null,
-        totalKm: 0,
-        homeCity: '',
-        homeTimezone: 'Asia/Kolkata',
-        restDay: 0,
-        runCount: 0,
-        createdAt: serverTimestamp(),
-        isActive: true,
-      });
+    // Create full user document with all required fields
+    await createUserDocument(uid, email, username, displayName);
 
     return credential;
   } catch (error: unknown) {
