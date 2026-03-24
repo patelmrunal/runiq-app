@@ -5,60 +5,76 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import firestore from '@react-native-firebase/firestore';
-import auth from '@react-native-firebase/auth';
+import LinearGradient from 'react-native-linear-gradient';
+import { CaretRight } from 'phosphor-react-native';
+import { doc, onSnapshot } from '@react-native-firebase/firestore';
+import { auth, db } from '../../services/firebase';
 import { useUserStore } from '../../stores/useUserStore';
 import type { TabScreenProps } from '../../navigation';
 import { COLORS, SPACING } from '../../constants/theme';
 
 type Props = TabScreenProps<'Dashboard'>;
 
-export default function DashboardScreen({}: Props) {
+// ─── Demo tasks (hardcoded for Phase 1) ───────────────────────────────────────
+
+const DEMO_TASKS = [
+  { id: '1', title: 'Morning 2K', difficulty: 'Easy', targetKm: 2, targetMin: 15 },
+  { id: '2', title: 'Steady 5K', difficulty: 'Medium', targetKm: 5, targetMin: 35 },
+  { id: '3', title: 'Speed 3K', difficulty: 'Hard', targetKm: 3, targetMin: 18 },
+];
+
+const DIFFICULTY_COLORS = {
+  Easy: '#10B981',
+  Medium: '#F59E0B',
+  Hard: '#E94560',
+};
+
+export default function DashboardScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const { displayName, currentStreak, level, tier } = useUserStore();
 
   useEffect(() => {
-    const uid = auth().currentUser?.uid;
+    const uid = auth.currentUser?.uid;
     if (!uid) {
       setLoading(false);
       return;
     }
 
     // Real-time listener for user document
-    const unsubscribe = firestore()
-      .collection('users')
-      .doc(uid)
-      .onSnapshot(
-        (doc) => {
-          const data = doc.data();
-          if (data) {
-            useUserStore.getState().setUser({
-              uid: data?.uid || '',
-              email: data?.email || '',
-              username: data?.username || '',
-              displayName: data?.displayName || '',
-              photoURL: data?.photoURL || null,
-              tier: data?.tier || 'basic',
-              level: data?.level || 1,
-              currentStreak: data?.currentStreak || 0,
-              longestStreak: data?.longestStreak || 0,
-              shieldsAvailable: data?.shieldsAvailable || 0,
-              dnaType: data?.dnaType || null,
-              totalKm: data?.totalKm || 0,
-              homeCity: data?.homeCity || '',
-              homeTimezone: data?.homeTimezone || '',
-              restDay: data?.restDay || 0,
-            });
-          }
-          setLoading(false);
-        },
-        (error) => {
-          console.error('[Dashboard] Firestore listener error:', error);
-          setLoading(false);
-        },
-      );
+    const userRef = doc(db, 'users', uid);
+    const unsubscribe = onSnapshot(
+      userRef,
+      (docSnap) => {
+        const data = docSnap.data();
+        if (data) {
+          useUserStore.getState().setUser({
+            uid: data?.uid || '',
+            email: data?.email || '',
+            username: data?.username || '',
+            displayName: data?.displayName || '',
+            photoURL: data?.photoURL || null,
+            tier: data?.tier || 'basic',
+            level: data?.level || 1,
+            currentStreak: data?.currentStreak || 0,
+            longestStreak: data?.longestStreak || 0,
+            shieldsAvailable: data?.shieldsAvailable || 0,
+            dnaType: data?.dnaType || null,
+            totalKm: data?.totalKm || 0,
+            homeCity: data?.homeCity || '',
+            homeTimezone: data?.homeTimezone || '',
+            restDay: data?.restDay || 0,
+          });
+        }
+        setLoading(false);
+      },
+      (error) => {
+        console.error('[Dashboard] Firestore listener error:', error);
+        setLoading(false);
+      },
+    );
 
     return () => unsubscribe();
   }, []);
@@ -88,56 +104,79 @@ export default function DashboardScreen({}: Props) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={styles.header}>
+        {/* Hero gradient card */}
+        <LinearGradient
+          colors={['#E94560', '#FF6B6B']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroCard}
+        >
           <Text style={styles.greeting}>
             {getGreeting()}, {displayName || 'Runner'}
           </Text>
 
-          {/* Tier badge */}
-          <View style={[styles.tierBadge, tier === 'premium' && styles.tierBadgePremium]}>
-            <Text style={[styles.tierBadgeText, tier === 'premium' && styles.tierBadgeTextPremium]}>
-              {tier === 'premium' ? 'Premium' : 'Basic'}
-            </Text>
-          </View>
-        </View>
-
-        {/* Stats row */}
-        <View style={styles.statsRow}>
-          {/* Streak */}
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Current Streak</Text>
-            <View style={styles.statValueRow}>
-              <Text style={styles.flameIcon}>🔥</Text>
-              <Text style={styles.statValue}>{currentStreak}</Text>
+          {/* Streak section */}
+          <View style={styles.streakSection}>
+            <Text style={styles.streakLabel}>Current Streak</Text>
+            <View style={styles.streakRow}>
+              <Text style={styles.flameEmoji}>🔥</Text>
+              <Text style={styles.streakValue}>{currentStreak}</Text>
             </View>
           </View>
 
-          {/* Level */}
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Level</Text>
-            <Text style={styles.statValue}>{level}</Text>
-            <Text style={styles.statSubtext}>Starter</Text>
+          {/* Level badge */}
+          <View style={styles.levelBadge}>
+            <Text style={styles.levelBadgeText}>Level {level}</Text>
           </View>
-        </View>
+        </LinearGradient>
 
-        {/* Daily tasks section */}
+        {/* Today's Tasks section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Today's Tasks</Text>
 
-          {/* Task placeholders */}
-          {[1, 2, 3].map((idx) => (
-            <View key={idx} style={styles.taskCard}>
-              <View style={styles.taskIcon}>
-                <Text style={styles.taskIconText}>📋</Text>
-              </View>
+          {DEMO_TASKS.map((task) => (
+            <TouchableOpacity
+              key={task.id}
+              style={styles.taskCard}
+              activeOpacity={0.7}
+              onPress={() => {
+                // Navigate to RunTracking in the parent MainStack
+                const parentNav = navigation.getParent();
+                if (parentNav) {
+                  parentNav.navigate('RunTracking', {
+                    taskId: task.id,
+                    taskTitle: task.title,
+                    targetKm: task.targetKm,
+                    targetMinutes: task.targetMin,
+                    difficulty: task.difficulty as 'Easy' | 'Medium' | 'Hard',
+                  });
+                }
+              }}
+            >
+              {/* Left colored bar */}
+              <View
+                style={[
+                  styles.taskBar,
+                  { backgroundColor: DIFFICULTY_COLORS[task.difficulty as keyof typeof DIFFICULTY_COLORS] },
+                ]}
+              />
+
               <View style={styles.taskContent}>
-                <Text style={styles.taskTitle}>Tasks loading...</Text>
+                <View style={styles.taskHeader}>
+                  <Text style={styles.taskTitle}>{task.title}</Text>
+                  <View style={[
+                    styles.difficultyBadge,
+                    { backgroundColor: DIFFICULTY_COLORS[task.difficulty as keyof typeof DIFFICULTY_COLORS] }
+                  ]}>
+                    <Text style={styles.difficultyBadgeText}>{task.difficulty}</Text>
+                  </View>
+                  <CaretRight size={20} color="#71717A" weight="bold" />
+                </View>
                 <Text style={styles.taskDescription}>
-                  Daily tasks will appear here
+                  {task.targetKm}km • {task.targetMin} minutes
                 </Text>
               </View>
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
       </ScrollView>
@@ -160,127 +199,125 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
     paddingBottom: SPACING.xxl,
   },
-  header: {
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.lg,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+
+  // Hero card
+  heroCard: {
+    borderRadius: 20,
+    padding: SPACING.lg,
+    marginBottom: SPACING.xl,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 4,
   },
   greeting: {
     fontFamily: 'Inter',
-    fontSize: 26,
-    fontWeight: '600',
-    color: COLORS.almostBlack,
-    flex: 1,
-  },
-  tierBadge: {
-    backgroundColor: COLORS.offWhite,
-    borderRadius: 16,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  tierBadgePremium: {
-    backgroundColor: '#FFF1F3',
-    borderColor: COLORS.accent,
-  },
-  tierBadgeText: {
-    fontFamily: 'Inter',
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.mediumGrey,
-  },
-  tierBadgeTextPremium: {
-    color: COLORS.accent,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: SPACING.md,
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#FFFFFF',
     marginBottom: SPACING.lg,
   },
-  statCard: {
-    flex: 1,
-    backgroundColor: COLORS.offWhite,
-    borderRadius: 12,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+  streakSection: {
+    marginBottom: SPACING.md,
   },
-  statLabel: {
+  streakLabel: {
     fontFamily: 'Inter',
-    fontSize: 13,
-    color: COLORS.mediumGrey,
-    marginBottom: SPACING.xs,
+    fontSize: 14,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.85)',
+    marginBottom: 8,
   },
-  statValueRow: {
+  streakRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
+    gap: 8,
   },
-  flameIcon: {
-    fontSize: 24,
+  flameEmoji: {
+    fontSize: 32,
   },
-  statValue: {
+  streakValue: {
     fontFamily: 'Inter',
-    fontSize: 28,
+    fontSize: 48,
     fontWeight: '700',
-    color: COLORS.almostBlack,
+    color: '#FFFFFF',
   },
-  statSubtext: {
+  levelBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    alignSelf: 'flex-start',
+  },
+  levelBadgeText: {
     fontFamily: 'Inter',
-    fontSize: 12,
-    color: COLORS.lightGrey,
-    marginTop: 2,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
+
+  // Tasks section
   section: {
     marginBottom: SPACING.lg,
   },
   sectionTitle: {
     fontFamily: 'Inter',
-    fontSize: 19,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     color: COLORS.almostBlack,
     marginBottom: SPACING.md,
   },
   taskCard: {
-    backgroundColor: COLORS.offWhite,
-    borderRadius: 12,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: SPACING.sm,
     flexDirection: 'row',
-    alignItems: 'center',
-  },
-  taskIcon: {
-    width: 40,
-    height: 40,
+    backgroundColor: '#F8F8F8',
     borderRadius: 20,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: SPACING.md,
+    marginBottom: SPACING.md,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  taskIconText: {
-    fontSize: 20,
+  taskBar: {
+    width: 4,
   },
   taskContent: {
     flex: 1,
+    padding: SPACING.md,
+    paddingLeft: SPACING.md + 4,
+  },
+  taskHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
   },
   taskTitle: {
     fontFamily: 'Inter',
-    fontSize: 15,
-    fontWeight: '500',
+    fontSize: 17,
+    fontWeight: '700',
     color: COLORS.almostBlack,
-    marginBottom: 2,
+    flex: 1,
+  },
+  difficultyBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  difficultyBadgeText: {
+    fontFamily: 'Inter',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   taskDescription: {
     fontFamily: 'Inter',
-    fontSize: 13,
+    fontSize: 14,
     color: COLORS.mediumGrey,
   },
 });

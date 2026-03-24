@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import LinearGradient from 'react-native-linear-gradient';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { loginWithEmail } from '../../services/firebase/auth';
 
@@ -32,6 +33,8 @@ export default function LoginScreen({ navigation }: Props) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [emailFocused, setEmailFocused] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
 
   const passwordRef = useRef<TextInput>(null);
 
@@ -74,8 +77,16 @@ export default function LoginScreen({ navigation }: Props) {
         {/* Scrollable inner — centres content vertically */}
         <View style={styles.inner}>
 
-          {/* Logo + tagline */}
+          {/* Logo + tagline with gradient background */}
           <View style={styles.logoSection}>
+            <View style={styles.gradientCircleContainer}>
+              <LinearGradient
+                colors={['#E94560', '#FF6B6B']}
+                style={styles.gradientCircle}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              />
+            </View>
             <Text style={styles.logo}>Runiq</Text>
             <Text style={styles.tagline}>Run. Grow. Become.</Text>
           </View>
@@ -84,11 +95,13 @@ export default function LoginScreen({ navigation }: Props) {
           <View style={styles.form}>
 
             {/* Email input */}
-            <View style={styles.inputWrapper}>
+            <View style={[styles.inputWrapper, emailFocused && styles.inputWrapperFocused]}>
               <TextInput
                 style={styles.inputField}
                 value={email}
                 onChangeText={(v) => { clearError(); setEmail(v); }}
+                onFocus={() => setEmailFocused(true)}
+                onBlur={() => setEmailFocused(false)}
                 placeholder="Email"
                 placeholderTextColor="#A1A1AA"
                 keyboardType="email-address"
@@ -101,12 +114,14 @@ export default function LoginScreen({ navigation }: Props) {
             </View>
 
             {/* Password input + eye toggle */}
-            <View style={[styles.inputWrapper, styles.passwordWrapper]}>
+            <View style={[styles.inputWrapper, styles.passwordWrapper, passwordFocused && styles.inputWrapperFocused]}>
               <TextInput
                 ref={passwordRef}
                 style={[styles.inputField, styles.passwordField]}
                 value={password}
                 onChangeText={(v) => { clearError(); setPassword(v); }}
+                onFocus={() => setPasswordFocused(true)}
+                onBlur={() => setPasswordFocused(false)}
                 placeholder="Password"
                 placeholderTextColor="#A1A1AA"
                 secureTextEntry={!showPassword}
@@ -192,32 +207,47 @@ const styles = StyleSheet.create({
   // Logo
   logoSection: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 64,
+  },
+  gradientCircleContainer: {
+    position: 'absolute',
+    top: -60,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gradientCircle: {
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    opacity: 0.12,
   },
   logo: {
     fontFamily: 'Inter',
-    fontSize: 40,
+    fontSize: 52,
     fontWeight: '700',
     color: '#09090B',
-    letterSpacing: -1,
+    letterSpacing: -1.5,
   },
   tagline: {
     fontFamily: 'Inter',
-    fontSize: 14,
+    fontSize: 16,
     color: '#71717A',
-    marginTop: 6,
-    letterSpacing: 0.4,
+    marginTop: 8,
+    letterSpacing: 0.5,
   },
 
   // Form
   form: {
-    gap: 12,
+    gap: 16,
   },
   inputWrapper: {
-    borderWidth: 1.5,
-    borderColor: '#E4E4E7',
-    borderRadius: 12,
     backgroundColor: '#F4F4F5',
+    borderRadius: 16,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  inputWrapperFocused: {
+    borderBottomColor: '#E94560',
   },
   passwordWrapper: {
     flexDirection: 'row',
@@ -227,25 +257,25 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter',
     fontSize: 16,
     color: '#09090B',
-    paddingHorizontal: 16,
-    paddingVertical: Platform.OS === 'ios' ? 15 : 13,
+    paddingHorizontal: 20,
+    paddingVertical: Platform.OS === 'ios' ? 18 : 16,
   },
   passwordField: {
     flex: 1,
   },
   eyeButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 15,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
   },
   eyeLabel: {
     fontFamily: 'Inter',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#71717A',
+    color: '#E94560',
   },
   forgotRow: {
     alignSelf: 'flex-end',
-    marginTop: 2,
+    marginTop: 4,
   },
   forgotText: {
     fontFamily: 'Inter',
@@ -254,7 +284,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontFamily: 'Inter',
-    fontSize: 13,
+    fontSize: 14,
     color: '#E94560',
     marginTop: 4,
   },
@@ -267,17 +297,22 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     backgroundColor: '#E94560',
-    borderRadius: 12,
-    height: 52,
+    borderRadius: 16,
+    height: 56,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 4,
   },
   buttonDisabled: {
     opacity: 0.6,
   },
   loginButtonText: {
     fontFamily: 'Inter',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
     color: '#FFFFFF',
   },

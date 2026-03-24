@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import firestore, { serverTimestamp } from '@react-native-firebase/firestore';
-import auth from '@react-native-firebase/auth';
+import { getFirestore, doc, updateDoc } from '@react-native-firebase/firestore';
+import { getAuth } from '@react-native-firebase/auth';
 import type { OnboardingScreenProps } from '../../navigation';
 import { Colors, Typography, Spacing, BorderRadius } from '../../constants';
 
@@ -25,6 +26,7 @@ interface Answers {
 }
 
 interface Question<T extends string> {
+  emoji: string;
   text: string;
   options: { label: string; value: T }[];
 }
@@ -32,6 +34,7 @@ interface Question<T extends string> {
 // ─── Questions config ──────────────────────────────────────────────────────────
 
 const Q1: Question<RunFrequency> = {
+  emoji: '🏃',
   text: 'How often do you currently run?',
   options: [
     { label: 'Never', value: 'never' },
@@ -41,6 +44,7 @@ const Q1: Question<RunFrequency> = {
 };
 
 const Q2: Question<PreferredTime> = {
+  emoji: '🕐',
   text: 'When do you prefer to run?',
   options: [
     { label: 'Morning', value: 'morning' },
@@ -50,6 +54,7 @@ const Q2: Question<PreferredTime> = {
 };
 
 const Q3: Question<PrimaryGoal> = {
+  emoji: '🎯',
   text: "What's your main goal?",
   options: [
     { label: 'Build Fitness', value: 'fitness' },
@@ -74,6 +79,8 @@ export default function QuestionnaireScreen({ navigation }: Props) {
   });
   const [saving, setSaving] = useState(false);
 
+  const scaleAnims = useRef<{ [key: string]: Animated.Value }>({}).current;
+
   const question = QUESTIONS[step];
   const totalSteps = QUESTIONS.length;
 
@@ -81,32 +88,62 @@ export default function QuestionnaireScreen({ navigation }: Props) {
   const currentAnswerKey = answerKeys[step];
   const currentAnswer = answers[currentAnswerKey];
 
+  const saveAnswers = async (finalAnswers: Answers) => {
+    const uid = getAuth().currentUser?.uid;
+    if (!uid) return;
+
+    console.log('[Questionnaire] Saving answers:', {
+      uid,
+      runFrequency: finalAnswers.runFrequency,
+      preferredTime: finalAnswers.preferredTime,
+      primaryGoal: finalAnswers.primaryGoal
+    });
+
+    const db = getFirestore();
+    await updateDoc(doc(db, 'users', uid), {
+      'onboarding.runFrequency': finalAnswers.runFrequency,
+      'onboarding.preferredTime': finalAnswers.preferredTime,
+      'onboarding.primaryGoal': finalAnswers.primaryGoal,
+      'onboarding.completed': true,
+      homeCity: 'Surat',
+      homeState: 'Gujarat',
+      homeTimezone: 'Asia/Kolkata',
+    });
+  };
+
   async function handleSelect(value: string) {
     const updated = { ...answers, [currentAnswerKey]: value };
     setAnswers(updated as Answers);
 
+    // Initialize scale animation for this option if not exists
+    if (!scaleAnims[value]) {
+      scaleAnims[value] = new Animated.Value(1);
+    }
+
+    // Scale animation
+    Animated.sequence([
+      Animated.timing(scaleAnims[value], {
+        toValue: 0.95,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnims[value], {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
     if (step < totalSteps - 1) {
-      setStep((s) => s + 1);
+      // Wait a bit for animation to be visible before moving to next step
+      setTimeout(() => setStep((s) => s + 1), 300);
       return;
     }
 
-    // Final step — save and proceed
+    // Final step (Q3 selected) — save and proceed
     setSaving(true);
     try {
-      const uid = auth().currentUser?.uid;
-      if (uid) {
-        await firestore()
-          .collection('users')
-          .doc(uid)
-          .update({
-            'onboarding.runFrequency': updated.runFrequency,
-            'onboarding.preferredTime': updated.preferredTime,
-            'onboarding.primaryGoal': updated.primaryGoal,
-            'onboarding.completedAt': serverTimestamp(),
-          });
-      }
-      // DO NOT navigate here. AppNavigator's Firestore listener
-      // will detect onboarding completion and automatically show MainStack.
+      await saveAnswers(updated as Answers);
     } catch (error) {
       console.error('[Questionnaire] Save failed:', error);
       // Non-blocking — proceed anyway
@@ -130,40 +167,52 @@ export default function QuestionnaireScreen({ navigation }: Props) {
         ) : (
           <View style={styles.backButton} />
         )}
-
-        <Text style={styles.progressLabel}>
-          {step + 1}/{totalSteps}
-        </Text>
       </View>
 
-      {/* Progress bar */}
-      <View style={styles.progressTrack}>
-        <View style={[styles.progressFill, { width: `${((step + 1) / totalSteps) * 100}%` }]} />
+      {/* Progress dots */}
+      <View style={styles.progressDots}>
+        {QUESTIONS.map((_, idx) => (
+          <View
+            key={idx}
+            style={[
+              styles.dot,
+              idx === step && styles.dotActive,
+              idx < step && styles.dotCompleted,
+            ]}
+          />
+        ))}
       </View>
 
       {/* Question */}
       <View style={styles.body}>
+        <Text style={styles.emoji}>{question.emoji}</Text>
         <Text style={styles.questionText}>{question.text}</Text>
 
         <View style={styles.optionList}>
           {question.options.map((option) => {
             const isSelected = currentAnswer === option.value;
-            return (
-              <TouchableOpacity
-                key={option.value}
-                style={[styles.optionCard, isSelected && styles.optionCardSelected]}
-                onPress={() => handleSelect(option.value)}
-                activeOpacity={0.75}
-                disabled={saving}
-              >
-                <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
-                  {option.label}
-                </Text>
 
-                <View style={[styles.radio, isSelected && styles.radioSelected]}>
-                  {isSelected && <View style={styles.radioDot} />}
-                </View>
-              </TouchableOpacity>
+            // Initialize animation value if not exists
+            if (!scaleAnims[option.value]) {
+              scaleAnims[option.value] = new Animated.Value(1);
+            }
+
+            return (
+              <Animated.View
+                key={option.value}
+                style={{ transform: [{ scale: scaleAnims[option.value] }] }}
+              >
+                <TouchableOpacity
+                  style={[styles.optionCard, isSelected && styles.optionCardSelected]}
+                  onPress={() => handleSelect(option.value)}
+                  activeOpacity={0.9}
+                  disabled={saving}
+                >
+                  <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              </Animated.View>
             );
           })}
         </View>
@@ -172,7 +221,7 @@ export default function QuestionnaireScreen({ navigation }: Props) {
       {/* Saving overlay */}
       {saving && (
         <View style={styles.savingOverlay}>
-          <ActivityIndicator color={Colors.ACCENT} size="small" />
+          <ActivityIndicator color={Colors.ACCENT} size="large" />
           <Text style={styles.savingText}>Setting up your profile…</Text>
         </View>
       )}
@@ -185,12 +234,11 @@ export default function QuestionnaireScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.PRIMARY_BG,
+    backgroundColor: '#FFFFFF',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.md,
     paddingBottom: Spacing.sm,
@@ -203,96 +251,86 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: Colors.SECONDARY_TEXT,
   },
-  progressLabel: {
-    fontFamily: Typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.SECONDARY_TEXT,
-    letterSpacing: 0.5,
+  progressDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: Spacing.lg,
   },
-  progressTrack: {
-    height: 3,
-    backgroundColor: Colors.BORDER,
-    marginHorizontal: Spacing.lg,
-    borderRadius: BorderRadius.full,
-    overflow: 'hidden',
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#E4E4E7',
   },
-  progressFill: {
-    height: '100%',
-    backgroundColor: Colors.ACCENT,
-    borderRadius: BorderRadius.full,
+  dotActive: {
+    backgroundColor: '#E94560',
+    width: 24,
+  },
+  dotCompleted: {
+    backgroundColor: '#E94560',
   },
   body: {
     flex: 1,
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.xl,
   },
+  emoji: {
+    fontSize: 64,
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
+  },
   questionText: {
     fontFamily: Typography.fontFamily,
-    ...Typography.screenTitle,
+    fontSize: 24,
+    fontWeight: '700',
     color: Colors.PRIMARY_TEXT,
     marginBottom: Spacing.xl,
-    lineHeight: 34,
+    lineHeight: 32,
+    textAlign: 'center',
   },
   optionList: {
-    gap: Spacing.sm,
+    gap: Spacing.md,
   },
   optionCard: {
-    flexDirection: 'row',
+    paddingVertical: 20,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.xl,
+    backgroundColor: '#F8F8F8',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.md,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1.5,
-    borderColor: Colors.BORDER,
-    backgroundColor: Colors.PRIMARY_BG,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 4,
   },
   optionCardSelected: {
-    borderColor: Colors.ACCENT,
-    backgroundColor: '#FFF1F3',
+    backgroundColor: '#E94560',
   },
   optionText: {
     fontFamily: Typography.fontFamily,
-    fontSize: 15,
-    fontWeight: '500',
+    fontSize: 17,
+    fontWeight: '600',
     color: Colors.PRIMARY_TEXT,
   },
   optionTextSelected: {
-    color: Colors.ACCENT,
-    fontWeight: '600',
-  },
-  radio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: Colors.BORDER,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioSelected: {
-    borderColor: Colors.ACCENT,
-  },
-  radioDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: Colors.ACCENT,
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   savingOverlay: {
     position: 'absolute',
-    bottom: 40,
+    top: 0,
     left: 0,
     right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     alignItems: 'center',
-    flexDirection: 'row',
     justifyContent: 'center',
-    gap: Spacing.sm,
+    gap: Spacing.md,
   },
   savingText: {
     fontFamily: Typography.fontFamily,
-    ...Typography.body,
+    fontSize: 16,
     color: Colors.SECONDARY_TEXT,
   },
 });

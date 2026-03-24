@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { launchImageLibrary, type ImagePickerResponse } from 'react-native-image-picker';
 import storage from '@react-native-firebase/storage';
-import auth from '@react-native-firebase/auth';
+import { auth } from '../../services/firebase';
 import { updateUserDocument } from '../../services/userService';
 import type { OnboardingScreenProps } from '../../navigation';
 import { COLORS, SPACING } from '../../constants/theme';
@@ -45,7 +45,7 @@ export default function ProfilePhotoScreen({ navigation }: Props) {
   async function uploadPhoto(uri: string) {
     setUploading(true);
     try {
-      const uid = auth().currentUser?.uid;
+      const uid = auth.currentUser?.uid;
       if (!uid) throw new Error('No user logged in');
 
       const filename = `profile_photos/${uid}.jpg`;

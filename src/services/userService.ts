@@ -1,4 +1,6 @@
-import firestore, { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
+import { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from '@react-native-firebase/firestore';
+import { db } from './firebase';
 
 // ─── User document schema ──────────────────────────────────────────────────────
 
@@ -57,47 +59,45 @@ export async function createUserDocument(
   displayName: string,
 ): Promise<void> {
   try {
-    await firestore()
-      .collection('users')
-      .doc(uid)
-      .set({
-        uid,
-        email,
-        username,
-        displayName,
-        photoURL: null,
-        createdAt: firestore.FieldValue.serverTimestamp(),
-        lastActiveAt: firestore.FieldValue.serverTimestamp(),
-        tier: 'basic',
-        premiumExpiresAt: null,
-        isActive: true,
-        homeCity: '',
-        homeState: '',
-        homeTimezone: 'Asia/Kolkata',
-        homeCoords: { lat: 0, lng: 0 },
-        dnaType: 'discovering',
-        dnaHistory: [],
-        runCount: 0,
-        totalKm: 0,
-        currentStreak: 0,
-        longestStreak: 0,
-        lastRunDate: null,
-        ranTodayFlag: false,
-        shieldsAvailable: 1,
-        shieldUsedThisMonth: false,
-        restDay: 0,
-        streakBreaksLast30: 0,
-        level: 1,
-        daysAsLegend: 0,
-        onboarding: {
-          runFrequency: null,
-          preferredTime: null,
-          primaryGoal: null,
-        },
-        buddyUid: null,
-        buddyRequestSentTo: null,
-        buddyRequestReceivedFrom: null,
-      });
+    const userRef = doc(db, 'users', uid);
+    await setDoc(userRef, {
+      uid,
+      email,
+      username,
+      displayName,
+      photoURL: null,
+      createdAt: serverTimestamp(),
+      lastActiveAt: serverTimestamp(),
+      tier: 'basic',
+      premiumExpiresAt: null,
+      isActive: true,
+      homeCity: '',
+      homeState: '',
+      homeTimezone: 'Asia/Kolkata',
+      homeCoords: { lat: 0, lng: 0 },
+      dnaType: 'discovering',
+      dnaHistory: [],
+      runCount: 0,
+      totalKm: 0,
+      currentStreak: 0,
+      longestStreak: 0,
+      lastRunDate: null,
+      ranTodayFlag: false,
+      shieldsAvailable: 1,
+      shieldUsedThisMonth: false,
+      restDay: 0,
+      streakBreaksLast30: 0,
+      level: 1,
+      daysAsLegend: 0,
+      onboarding: {
+        runFrequency: null,
+        preferredTime: null,
+        primaryGoal: null,
+      },
+      buddyUid: null,
+      buddyRequestSentTo: null,
+      buddyRequestReceivedFrom: null,
+    });
   } catch (error) {
     console.error('[userService] Failed to create user document:', error);
     throw new Error('Failed to create user profile');
@@ -111,8 +111,9 @@ export async function createUserDocument(
  */
 export async function getUserDocument(uid: string): Promise<UserDocument | null> {
   try {
-    const doc = await firestore().collection('users').doc(uid).get();
-    const data = doc.data();
+    const userRef = doc(db, 'users', uid);
+    const docSnap = await getDoc(userRef);
+    const data = docSnap.data();
     if (data) {
       return data as UserDocument;
     }
@@ -133,7 +134,8 @@ export async function updateUserDocument(
   updates: Partial<UserDocument>,
 ): Promise<void> {
   try {
-    await firestore().collection('users').doc(uid).update(updates);
+    const userRef = doc(db, 'users', uid);
+    await updateDoc(userRef, updates);
   } catch (error) {
     console.error('[userService] Failed to update user document:', error);
     throw new Error('Failed to update user profile');

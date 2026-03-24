@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -37,7 +38,7 @@ interface FormState {
 
 interface StepConfig {
   field: keyof FormState;
-  label: string;
+  question: string;
   placeholder: string;
   keyboardType?: 'default' | 'email-address';
   hasPasswordToggle?: boolean;
@@ -49,8 +50,8 @@ interface StepConfig {
 const STEPS: StepConfig[] = [
   {
     field: 'fullName',
-    label: 'Full Name',
-    placeholder: 'Your full name',
+    question: "What's your name?",
+    placeholder: 'Enter your full name',
     autoCapitalize: 'words',
     validate: (v) => {
       if (!v.trim()) return 'Full name is required';
@@ -60,8 +61,8 @@ const STEPS: StepConfig[] = [
   },
   {
     field: 'username',
-    label: 'Username',
-    placeholder: 'Choose a username (letters and numbers only)',
+    question: 'Choose a username',
+    placeholder: 'Username',
     autoCapitalize: 'none',
     hint: '3–20 characters, letters and numbers only',
     validate: (v) => {
@@ -73,8 +74,8 @@ const STEPS: StepConfig[] = [
   },
   {
     field: 'email',
-    label: 'Email',
-    placeholder: 'your@email.com',
+    question: "What's your email?",
+    placeholder: 'you@example.com',
     keyboardType: 'email-address',
     autoCapitalize: 'none',
     validate: (v) => {
@@ -85,8 +86,8 @@ const STEPS: StepConfig[] = [
   },
   {
     field: 'password',
-    label: 'Password',
-    placeholder: 'Min 8 characters',
+    question: 'Create a password',
+    placeholder: 'Minimum 8 characters',
     autoCapitalize: 'none',
     hasPasswordToggle: true,
     validate: (v) => {
@@ -112,8 +113,11 @@ export default function RegisterScreen({ navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [focused, setFocused] = useState(false);
 
   const inputRef = useRef<TextInput>(null);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+
   const current = STEPS[step];
   const isLast = step === TOTAL - 1;
 
@@ -130,7 +134,15 @@ export default function RegisterScreen({ navigation }: Props) {
 
   function handleBack() {
     setError(null);
-    setStep((s) => s - 1);
+    // Fade out animation
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 150,
+      useNativeDriver: true,
+    }).start(() => {
+      setStep((s) => s - 1);
+      fadeAnim.setValue(1);
+    });
   }
 
   async function handleNext() {
@@ -141,7 +153,15 @@ export default function RegisterScreen({ navigation }: Props) {
     }
 
     if (!isLast) {
-      setStep((s) => s + 1);
+      // Fade out animation
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }).start(() => {
+        setStep((s) => s + 1);
+        fadeAnim.setValue(1);
+      });
       return;
     }
 
@@ -167,7 +187,7 @@ export default function RegisterScreen({ navigation }: Props) {
 
       {/* Progress bar — outside KAV so it doesn't jump */}
       <View style={styles.progressTrack}>
-        <View
+        <Animated.View
           style={[
             styles.progressFill,
             { width: `${((step + 1) / TOTAL) * 100}%` },
@@ -202,12 +222,13 @@ export default function RegisterScreen({ navigation }: Props) {
         </View>
 
         {/* Content — flex 1 centres the field vertically */}
-        <View style={styles.content}>
-          <Text style={styles.fieldLabel}>{current.label}</Text>
+        <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
+          <Text style={styles.question}>{current.question}</Text>
 
           <View
             style={[
               styles.inputWrapper,
+              focused && styles.inputWrapperFocused,
               current.hasPasswordToggle && styles.passwordWrapper,
             ]}
           >
@@ -219,6 +240,8 @@ export default function RegisterScreen({ navigation }: Props) {
               ]}
               value={form[current.field]}
               onChangeText={handleChange}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
               placeholder={current.placeholder}
               placeholderTextColor="#A1A1AA"
               keyboardType={current.keyboardType ?? 'default'}
@@ -251,7 +274,7 @@ export default function RegisterScreen({ navigation }: Props) {
 
           {/* Validation error */}
           {!!error && <Text style={styles.errorText}>{error}</Text>}
-        </View>
+        </Animated.View>
 
         {/* Footer */}
         <View style={styles.footer}>
@@ -296,8 +319,8 @@ const styles = StyleSheet.create({
 
   // Progress bar
   progressTrack: {
-    height: 3,
-    backgroundColor: '#E4E4E7',
+    height: 4,
+    backgroundColor: '#F4F4F5',
   },
   progressFill: {
     height: '100%',
@@ -313,9 +336,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 8,
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 12,
   },
   backButton: {
     width: 44,
@@ -324,16 +347,16 @@ const styles = StyleSheet.create({
   },
   backArrow: {
     fontFamily: 'Inter',
-    fontSize: 30,
+    fontSize: 32,
     color: '#71717A',
-    lineHeight: 34,
+    lineHeight: 36,
   },
   stepLabel: {
     fontFamily: 'Inter',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
     color: '#71717A',
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
   },
 
   // Content
@@ -341,22 +364,26 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 24,
     justifyContent: 'center',
-    paddingBottom: 24,
+    paddingBottom: 40,
   },
-  fieldLabel: {
+  question: {
     fontFamily: 'Inter',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 32,
+    fontWeight: '700',
     color: '#09090B',
-    marginBottom: 10,
+    marginBottom: 32,
+    lineHeight: 40,
   },
 
   // Input
   inputWrapper: {
-    borderWidth: 1.5,
-    borderColor: '#E4E4E7',
-    borderRadius: 12,
     backgroundColor: '#F4F4F5',
+    borderRadius: 16,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  inputWrapperFocused: {
+    borderBottomColor: '#E94560',
   },
   passwordWrapper: {
     flexDirection: 'row',
@@ -364,39 +391,39 @@ const styles = StyleSheet.create({
   },
   inputField: {
     fontFamily: 'Inter',
-    fontSize: 16,
+    fontSize: 18,
     color: '#09090B',
-    paddingHorizontal: 16,
-    paddingVertical: Platform.OS === 'ios' ? 15 : 13,
+    paddingHorizontal: 20,
+    paddingVertical: Platform.OS === 'ios' ? 18 : 16,
   },
   passwordField: {
     flex: 1,
   },
   eyeButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 15,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
   },
   eyeLabel: {
     fontFamily: 'Inter',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#71717A',
+    color: '#E94560',
   },
 
   // Hint / error
   hintText: {
     fontFamily: 'Inter',
-    fontSize: 12,
+    fontSize: 13,
     color: '#A1A1AA',
-    marginTop: 6,
-    marginLeft: 2,
+    marginTop: 12,
+    marginLeft: 4,
   },
   errorText: {
     fontFamily: 'Inter',
-    fontSize: 13,
+    fontSize: 14,
     color: '#E94560',
-    marginTop: 6,
-    marginLeft: 2,
+    marginTop: 12,
+    marginLeft: 4,
   },
 
   // Footer
@@ -407,17 +434,22 @@ const styles = StyleSheet.create({
   },
   nextButton: {
     backgroundColor: '#E94560',
-    borderRadius: 12,
-    height: 52,
+    borderRadius: 16,
+    height: 56,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 4,
   },
   buttonDisabled: {
     opacity: 0.6,
   },
   nextButtonText: {
     fontFamily: 'Inter',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
     color: '#FFFFFF',
   },

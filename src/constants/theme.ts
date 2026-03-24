@@ -3,11 +3,13 @@
 export const COLORS = {
   white: '#FFFFFF',
   offWhite: '#F4F4F5',
+  cardBg: '#F8F8F8',
   nearBlack: '#18181B',
   almostBlack: '#09090B',
   mediumGrey: '#71717A',
   lightGrey: '#A1A1AA',
   accent: '#E94560',        // RED-PINK — primary accent
+  accentLight: '#FF6B6B',   // GRADIENT END
   deepBlue: '#0F3460',
   success: '#10B981',
   warning: '#F59E0B',
@@ -30,16 +32,28 @@ export const SPACING = {
   xxl: 48,
 };
 
+export const SHADOWS = {
+  subtle: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+};
+
 // ─── Legacy aliases (for backward compatibility with existing screens) ─────────
 
 export const Colors = {
   PRIMARY_BG: COLORS.white,
   SECONDARY_BG: COLORS.offWhite,
+  CARD_BG: COLORS.cardBg,
   SURFACE: COLORS.nearBlack,
   PRIMARY_TEXT: COLORS.almostBlack,
   SECONDARY_TEXT: COLORS.mediumGrey,
   MUTED_TEXT: COLORS.lightGrey,
   ACCENT: COLORS.accent,
+  ACCENT_LIGHT: COLORS.accentLight,
   ACCENT_SECONDARY: COLORS.deepBlue,
   SUCCESS: COLORS.success,
   WARNING: COLORS.warning,
@@ -92,5 +106,6 @@ export const BorderRadius = {
   sm: 8,
   md: 12,
   lg: 16,
+  xl: 20,
   full: 999,
 } as const;

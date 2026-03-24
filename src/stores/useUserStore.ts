@@ -23,6 +23,7 @@ interface UserState {
   shieldsAvailable: number;
   dnaType: DnaType;
   totalKm: number;
+  totalRuns: number;
   homeCity: string;
   homeTimezone: string;
   restDay: number;
@@ -47,6 +48,7 @@ const initialState: UserState = {
   shieldsAvailable: 0,
   dnaType: null,
   totalKm: 0,
+  totalRuns: 0,
   homeCity: '',
   homeTimezone: '',
   restDay: 0,

@@ -1,8 +1,16 @@
-// Firebase services barrel export
-export * from './auth';
-import auth from '@react-native-firebase/auth';
-import firestore from '@react-native-firebase/firestore';
-import storage from '@react-native-firebase/storage';
-import messaging from '@react-native-firebase/messaging';
+// Firebase services — modular API (v22)
+import { getApp } from '@react-native-firebase/app';
+import { getFirestore } from '@react-native-firebase/firestore';
+import { getAuth } from '@react-native-firebase/auth';
+import { getStorage } from '@react-native-firebase/storage';
 
-export { auth, firestore, storage, messaging };
+// Initialize Firebase app instance
+const app = getApp();
+
+// Export initialized services
+export const db = getFirestore(app);
+export const auth = getAuth(app);
+export const storage = getStorage(app);
+
+// Re-export auth functions
+export * from './auth';

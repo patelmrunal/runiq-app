@@ -4,10 +4,10 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  PermissionsAndroid,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { request, PERMISSIONS, RESULTS, type PermissionStatus } from 'react-native-permissions';
 import type { OnboardingScreenProps } from '../../navigation';
 import { Colors, Typography, Spacing, BorderRadius } from '../../constants';
 
@@ -16,23 +16,23 @@ type Props = OnboardingScreenProps<'LocationPermission'>;
 export default function LocationPermissionScreen({ navigation }: Props) {
   const [requesting, setRequesting] = useState(false);
 
-  async function handleRequest() {
-    setRequesting(true);
+  const handleAllow = async () => {
     try {
-      const permission =
-        Platform.OS === 'ios'
-          ? PERMISSIONS.IOS.LOCATION_WHEN_IN_USE
-          : PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION;
-
-      const result: PermissionStatus = await request(permission);
-
-      if (result === RESULTS.GRANTED) {
-        navigation.navigate('Questionnaire');
-      }
-    } finally {
-      setRequesting(false);
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        {
+          title: 'Location Permission',
+          message: 'Runiq uses GPS to track your runs and show local leaderboards',
+          buttonPositive: 'Allow',
+          buttonNegative: 'Skip',
+        }
+      );
+      // Whether granted or denied, move forward
+      navigation.navigate('Questionnaire');
+    } catch {
+      navigation.navigate('Questionnaire');
     }
-  }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -47,7 +47,7 @@ export default function LocationPermissionScreen({ navigation }: Props) {
       <View style={styles.footer}>
         <TouchableOpacity
           style={[styles.primaryButton, requesting && styles.buttonDisabled]}
-          onPress={handleRequest}
+          onPress={handleAllow}
           activeOpacity={0.85}
           disabled={requesting}
         >

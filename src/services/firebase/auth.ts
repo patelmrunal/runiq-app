@@ -1,4 +1,6 @@
-import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from '@react-native-firebase/auth';
+import { auth } from '../firebase';
 import { createUserDocument } from '../userService';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -19,7 +21,7 @@ export async function registerWithEmail({
   displayName,
 }: RegisterPayload): Promise<FirebaseAuthTypes.UserCredential> {
   try {
-    const credential = await auth().createUserWithEmailAndPassword(email, password);
+    const credential = await createUserWithEmailAndPassword(auth, email, password);
     const { uid } = credential.user;
 
     // Create full user document with all required fields
@@ -38,7 +40,7 @@ export async function loginWithEmail(
   password: string,
 ): Promise<FirebaseAuthTypes.UserCredential> {
   try {
-    return await auth().signInWithEmailAndPassword(email, password);
+    return await signInWithEmailAndPassword(auth, email, password);
   } catch (error: unknown) {
     throw new Error(`Login failed: ${(error as FirebaseAuthTypes.NativeFirebaseAuthError).message}`);
   }
@@ -48,7 +50,7 @@ export async function loginWithEmail(
 
 export async function logout(): Promise<void> {
   try {
-    await auth().signOut();
+    await signOut(auth);
   } catch (error: unknown) {
     throw new Error(`Logout failed: ${(error as FirebaseAuthTypes.NativeFirebaseAuthError).message}`);
   }
@@ -58,7 +60,7 @@ export async function logout(): Promise<void> {
 
 export async function resetPassword(email: string): Promise<void> {
   try {
-    await auth().sendPasswordResetEmail(email);
+    await sendPasswordResetEmail(auth, email);
   } catch (error: unknown) {
     throw new Error(`Password reset failed: ${(error as FirebaseAuthTypes.NativeFirebaseAuthError).message}`);
   }
@@ -67,7 +69,7 @@ export async function resetPassword(email: string): Promise<void> {
 // ─── Get current user ──────────────────────────────────────────────────────────
 
 export function getCurrentUser(): FirebaseAuthTypes.User | null {
-  return auth().currentUser;
+  return auth.currentUser;
 }
 
 // ─── Auth state listener ───────────────────────────────────────────────────────
@@ -75,5 +77,7 @@ export function getCurrentUser(): FirebaseAuthTypes.User | null {
 export function onAuthStateChanged(
   callback: (user: FirebaseAuthTypes.User | null) => void,
 ): () => void {
-  return auth().onAuthStateChanged(callback);
+  // Note: The imported onAuthStateChanged from modular API conflicts with this function name
+  // We're wrapping it here for consistency with the existing codebase
+  return require('@react-native-firebase/auth').onAuthStateChanged(auth, callback);
 }

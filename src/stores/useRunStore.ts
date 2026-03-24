@@ -6,6 +6,14 @@ interface Coordinate {
   timestamp: number;
 }
 
+interface TaskInfo {
+  taskId: string;
+  taskTitle: string;
+  targetKm: number;
+  targetMinutes: number;
+  difficulty: 'Easy' | 'Medium' | 'Hard';
+}
+
 interface CurrentRun {
   startTime: number | null;
   distance: number;
@@ -14,12 +22,15 @@ interface CurrentRun {
   coordinates: Coordinate[];
   taskId: string | null;
   pausedDuration: number;
+  taskInfo?: TaskInfo;
 }
 
 interface RunState {
   isRunning: boolean;
   isPaused: boolean;
   currentRun: CurrentRun;
+  currentTaskInfo: TaskInfo | null;
+  lastSessionData: any | null;
   offlineQueue: unknown[];
 }
 
@@ -31,6 +42,8 @@ interface RunActions {
   addCoordinate: (coordinate: Coordinate) => void;
   updateDistance: (distance: number) => void;
   updatePace: (pace: number) => void;
+  setTaskInfo: (taskInfo: TaskInfo) => void;
+  setLastSessionData: (data: any) => void;
   clearRun: () => void;
 }
 
@@ -48,6 +61,8 @@ const initialState: RunState = {
   isRunning: false,
   isPaused: false,
   currentRun: initialRun,
+  currentTaskInfo: null,
+  lastSessionData: null,
   offlineQueue: [],
 };
 
@@ -73,5 +88,9 @@ export const useRunStore = create<RunState & RunActions>((set) => ({
     set((state) => ({ currentRun: { ...state.currentRun, distance } })),
   updatePace: (pace) =>
     set((state) => ({ currentRun: { ...state.currentRun, pace } })),
+  setTaskInfo: (taskInfo) =>
+    set({ currentTaskInfo: taskInfo }),
+  setLastSessionData: (data) =>
+    set({ lastSessionData: data }),
   clearRun: () => set(initialState),
 }));
