@@ -7,10 +7,12 @@ import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import { House, Play, User, DotsNine } from 'phosphor-react-native';
 import { onAuthStateChanged } from '@react-native-firebase/auth';
-import { doc, onSnapshot } from '@react-native-firebase/firestore';
+import { doc, onSnapshot, getDoc } from '@react-native-firebase/firestore';
 import NetInfo from '@react-native-community/netinfo';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, db } from '../services/firebase';
 import { createUserDocument } from '../services/userService';
+import { subscribeToRunTasks, type RunTask } from '../services/taskService';
 import LoginScreen from '../screens/auth/LoginScreen';
 import RegisterScreen from '../screens/auth/RegisterScreen';
 import SplashScreen from '../screens/SplashScreen';
@@ -20,10 +22,24 @@ import {
   QuestionnaireScreen,
   WelcomeScreen,
 } from '../screens/onboarding';
-import { DashboardScreen } from '../screens/dashboard';
-import { ProfileScreen } from '../screens/profile';
-import { RunTrackingScreen, PostRunSummaryScreen } from '../screens/run';
-import TaskSelectionModal from '../screens/run/TaskSelectionModal';
+
+const DashboardScreen = React.lazy(() =>
+  import('../screens/dashboard').then((module) => ({ default: module.DashboardScreen }))
+);
+
+const ProfileScreen = React.lazy(() =>
+  import('../screens/profile').then((module) => ({ default: module.ProfileScreen }))
+);
+
+const RunTrackingScreen = React.lazy(() =>
+  import('../screens/run').then((module) => ({ default: module.RunTrackingScreen }))
+);
+
+const PostRunSummaryScreen = React.lazy(() =>
+  import('../screens/run').then((module) => ({ default: module.PostRunSummaryScreen }))
+);
+
+const TaskSelectionModal = React.lazy(() => import('../screens/run/TaskSelectionModal'));
 
 // ─── Placeholder (swap out as real screens are built) ──────────────────────────
 
@@ -33,6 +49,12 @@ const PlaceholderScreen = ({ route }: { route: any }) => (
       {route.name}
     </Text>
     <Text style={styles.placeholderSubtitle}>Coming soon</Text>
+  </View>
+);
+
+const ScreenFallback = ({ label = 'Loading...' }: { label?: string }) => (
+  <View style={styles.loadingContainer}>
+    <Text style={styles.loadingSubtitle}>{label}</Text>
   </View>
 );
 
@@ -133,16 +155,32 @@ function AuthNavigator() {
 
 function BottomTabNavigator() {
   const [showTaskModal, setShowTaskModal] = React.useState(false);
+  const [tasks, setTasks] = React.useState<RunTask[]>([]);
+  const [tasksLoading, setTasksLoading] = React.useState(true);
   const navigation = useNavigation<any>();
 
-  const handleSelectTask = (task: any) => {
+  React.useEffect(() => {
+    const unsubscribe = subscribeToRunTasks(
+      (loadedTasks) => {
+        setTasks(loadedTasks);
+        setTasksLoading(false);
+      },
+      () => {
+        setTasksLoading(false);
+      }
+    );
+
+    return unsubscribe;
+  }, []);
+
+  const handleSelectTask = (task: RunTask) => {
     setShowTaskModal(false);
     setTimeout(() => {
       navigation.navigate('RunTracking', {
         taskId: task.id,
         taskTitle: task.title,
         targetKm: task.targetKm,
-        targetMinutes: task.targetMin,
+        targetMinutes: task.targetMinutes,
         difficulty: task.difficulty,
       });
     }, 300);
@@ -162,68 +200,72 @@ function BottomTabNavigator() {
   };
 
   return (
-    <>
-      <Tab.Navigator
-        screenOptions={({ route }) => ({
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopColor: '#E4E4E7',
-          borderTopWidth: 1,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.06,
-          shadowRadius: 8,
-          elevation: 8,
-          height: 60,
-          paddingBottom: 8,
-        },
-        tabBarActiveTintColor: '#E94560',
-        tabBarInactiveTintColor: '#71717A',
-        tabBarLabelStyle: {
-          fontFamily: 'Inter',
-          fontSize: 11,
-          fontWeight: '600',
-        },
-        tabBarIcon: ({ color, focused }) => {
-          const weight = focused ? 'fill' : 'regular';
-          switch (route.name) {
-            case 'Dashboard':
-              return <House size={24} color={color} weight={weight} />;
-            case 'Run':
-              return <Play size={24} color={color} weight={weight} />;
-            case 'Profile':
-              return <User size={24} color={color} weight={weight} />;
-            case 'More':
-              return <DotsNine size={24} color={color} weight={weight} />;
-            default:
-              return null;
-          }
-        },
-      })}
-    >
-      <Tab.Screen name="Dashboard" component={DashboardScreen} />
-      <Tab.Screen
-        name="Run"
-        component={PlaceholderScreen}
-        listeners={() => ({
-          tabPress: (e) => {
-            e.preventDefault();
-            setShowTaskModal(true);
+    <React.Suspense fallback={<ScreenFallback label="Loading screens..." />}>
+      <>
+        <Tab.Navigator
+          screenOptions={({ route }) => ({
+          headerShown: false,
+          tabBarStyle: {
+            backgroundColor: '#FFFFFF',
+            borderTopColor: '#E4E4E7',
+            borderTopWidth: 1,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: -2 },
+            shadowOpacity: 0.06,
+            shadowRadius: 8,
+            elevation: 8,
+            height: 60,
+            paddingBottom: 8,
+          },
+          tabBarActiveTintColor: '#E94560',
+          tabBarInactiveTintColor: '#71717A',
+          tabBarLabelStyle: {
+            fontFamily: 'Inter',
+            fontSize: 11,
+            fontWeight: '600',
+          },
+          tabBarIcon: ({ color, focused }) => {
+            const weight = focused ? 'fill' : 'regular';
+            switch (route.name) {
+              case 'Dashboard':
+                return <House size={24} color={color} weight={weight} />;
+              case 'Run':
+                return <Play size={24} color={color} weight={weight} />;
+              case 'Profile':
+                return <User size={24} color={color} weight={weight} />;
+              case 'More':
+                return <DotsNine size={24} color={color} weight={weight} />;
+              default:
+                return null;
+            }
           },
         })}
-      />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
-      <Tab.Screen name="More" component={PlaceholderScreen} />
-    </Tab.Navigator>
+      >
+        <Tab.Screen name="Dashboard" component={DashboardScreen} />
+        <Tab.Screen
+          name="Run"
+          component={PlaceholderScreen}
+          listeners={{
+            tabPress: (e) => {
+              e.preventDefault();
+              setShowTaskModal(true);
+            },
+          }}
+        />
+        <Tab.Screen name="Profile" component={ProfileScreen} />
+        <Tab.Screen name="More" component={PlaceholderScreen} />
+      </Tab.Navigator>
 
-      <TaskSelectionModal
-        visible={showTaskModal}
-        onClose={() => setShowTaskModal(false)}
-        onSelectTask={handleSelectTask}
-        onSelectFreeRun={handleSelectFreeRun}
-      />
-    </>
+        <TaskSelectionModal
+          visible={showTaskModal}
+          tasks={tasks}
+          loading={tasksLoading}
+          onClose={() => setShowTaskModal(false)}
+          onSelectTask={handleSelectTask}
+          onSelectFreeRun={handleSelectFreeRun}
+        />
+      </>
+    </React.Suspense>
   );
 }
 
@@ -231,34 +273,36 @@ function BottomTabNavigator() {
 
 function MainNavigator() {
   return (
-    <MainStack.Navigator screenOptions={{ headerShown: false }}>
-      <MainStack.Screen name="Tabs" component={BottomTabNavigator} />
-      <MainStack.Screen
-        name="RunTracking"
-        component={RunTrackingScreen}
-        options={{ presentation: 'fullScreenModal' }}
-      />
-      <MainStack.Screen
-        name="PostRunSummary"
-        component={PostRunSummaryScreen}
-        options={{ presentation: 'modal' }}
-      />
-      <MainStack.Screen
-        name="BadgeDetail"
-        component={PlaceholderScreen}
-        options={{ presentation: 'modal' }}
-      />
-      <MainStack.Screen
-        name="StoryCard"
-        component={PlaceholderScreen}
-        options={{ presentation: 'fullScreenModal' }}
-      />
-      <MainStack.Screen
-        name="MissionCreate"
-        component={PlaceholderScreen}
-        options={{ presentation: 'modal' }}
-      />
-    </MainStack.Navigator>
+    <React.Suspense fallback={<ScreenFallback label="Loading run tools..." />}>
+      <MainStack.Navigator screenOptions={{ headerShown: false }}>
+        <MainStack.Screen name="Tabs" component={BottomTabNavigator} />
+        <MainStack.Screen
+          name="RunTracking"
+          component={RunTrackingScreen}
+          options={{ presentation: 'fullScreenModal' }}
+        />
+        <MainStack.Screen
+          name="PostRunSummary"
+          component={PostRunSummaryScreen}
+          options={{ presentation: 'modal' }}
+        />
+        <MainStack.Screen
+          name="BadgeDetail"
+          component={PlaceholderScreen}
+          options={{ presentation: 'modal' }}
+        />
+        <MainStack.Screen
+          name="StoryCard"
+          component={PlaceholderScreen}
+          options={{ presentation: 'fullScreenModal' }}
+        />
+        <MainStack.Screen
+          name="MissionCreate"
+          component={PlaceholderScreen}
+          options={{ presentation: 'modal' }}
+        />
+      </MainStack.Navigator>
+    </React.Suspense>
   );
 }
 
@@ -266,8 +310,8 @@ function MainNavigator() {
 
 export default function AppNavigator() {
   const [user, setUser] = useState<any>(null);
-  const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null);
-  const [initializing, setInitializing] = useState(true);
+  const [appState, setAppState] = useState<'auth' | 'onboarding' | 'main'>('auth');
+  const [loading, setLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(true);
 
   // Monitor network connectivity
@@ -279,62 +323,89 @@ export default function AppNavigator() {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (!firebaseUser) {
-        setOnboardingComplete(null);
-        setInitializing(false);
+        setAppState('auth');
+        setLoading(false);
+        return;
       }
+
+      setUser(firebaseUser);
+
+      // Check AsyncStorage cache first — instant
+      const cacheKey = `onboarding_complete_${firebaseUser.uid}`;
+      const cached = await AsyncStorage.getItem(cacheKey);
+
+      if (cached === 'true') {
+        // Returning user — go straight to main
+        setAppState('main');
+        setLoading(false);
+        return;
+      }
+
+      // New user — check Firestore
+      try {
+        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+        const data = userDoc.data();
+
+        if (data?.onboarding?.primaryGoal) {
+          // Onboarding complete — cache it and go to main
+          await AsyncStorage.setItem(cacheKey, 'true');
+          setAppState('main');
+        } else {
+          // Create user document if doesn't exist
+          if (!data) {
+            const email = firebaseUser.email || '';
+            const username = email.split('@')[0] || 'user';
+            const displayName = firebaseUser.displayName || username;
+            await createUserDocument(firebaseUser.uid, email, username, displayName);
+          }
+          setAppState('onboarding');
+        }
+      } catch (e) {
+        console.error('[AppNavigator] Error checking onboarding:', e);
+        // On error always go to main — never block user
+        setAppState('main');
+      }
+
+      setLoading(false);
     });
+
     return unsubscribe;
   }, []);
 
-  // Listen to user document for onboarding changes
+  // Listen to user document for onboarding completion (real-time updates)
   useEffect(() => {
-    if (!user?.uid) return;
+    if (!user?.uid || appState !== 'onboarding') return;
 
     const userRef = doc(db, 'users', user.uid);
     const unsubscribe = onSnapshot(
       userRef,
       async (docSnap) => {
         const data = docSnap.data();
-
-        // If document doesn't exist, create it automatically
-        if (!data) {
-          console.log('[AppNavigator] User document missing, creating...');
-          try {
-            // Derive username from email if not available
-            const email = user.email || '';
-            const username = email.split('@')[0] || 'user';
-            const displayName = user.displayName || username;
-
-            await createUserDocument(user.uid, email, username, displayName);
-            // The listener will fire again after document creation
-            return;
-          } catch (error) {
-            console.error('[AppNavigator] Failed to create user document:', error);
-            setOnboardingComplete(false);
-            setInitializing(false);
-            return;
-          }
-        }
+        if (!data) return;
 
         const hasCompletedOnboarding = !!data?.onboarding?.completed;
-        setOnboardingComplete(hasCompletedOnboarding);
-        setInitializing(false);
+        if (hasCompletedOnboarding) {
+          await AsyncStorage.setItem(`onboarding_complete_${user.uid}`, 'true');
+          setAppState('main');
+        }
       },
       (error) => {
         console.error('[AppNavigator] Firestore listener error:', error);
-        setOnboardingComplete(false);
-        setInitializing(false);
       }
     );
 
     return unsubscribe;
-  }, [user]);
+  }, [user, appState]);
 
-  if (initializing) {
-    return null;
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.loadingTitle}>Runiq</Text>
+        <Text style={styles.loadingSubtitle}>Run. Grow. Become.</Text>
+      </View>
+    );
   }
 
   if (!isConnected) {
@@ -353,9 +424,9 @@ export default function AppNavigator() {
 
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
-      {!user ? (
+      {appState === 'auth' ? (
         <RootStack.Screen name="Auth" component={AuthNavigator} />
-      ) : onboardingComplete ? (
+      ) : appState === 'main' ? (
         <RootStack.Screen name="Main" component={MainNavigator} />
       ) : (
         <RootStack.Screen name="Onboarding" component={OnboardingNavigator} />
@@ -372,6 +443,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  loadingTitle: {
+    fontSize: 36,
+    fontWeight: '700',
+    color: '#09090B',
+  },
+  loadingSubtitle: {
+    fontSize: 14,
+    color: '#71717A',
+    marginTop: 8,
   },
   placeholderTitle: {
     fontSize: 24,

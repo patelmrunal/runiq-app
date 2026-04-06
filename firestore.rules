@@ -30,6 +30,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /auto/{taskId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     match /adminQueue/{document=**} {
       allow read, write: if false;
     }

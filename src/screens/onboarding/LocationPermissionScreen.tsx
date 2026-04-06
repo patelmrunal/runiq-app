@@ -4,34 +4,34 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  PermissionsAndroid,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { OnboardingScreenProps } from '../../navigation';
 import { Colors, Typography, Spacing, BorderRadius } from '../../constants';
+import { requestLocationPermissions } from '../../services/locationService';
 
 type Props = OnboardingScreenProps<'LocationPermission'>;
 
 export default function LocationPermissionScreen({ navigation }: Props) {
-  const [requesting, setRequesting] = useState(false);
+  const [isRequesting, setIsRequesting] = useState(false);
 
   const handleAllow = async () => {
+    if (isRequesting) return; // prevent double tap
+    setIsRequesting(true);
+
     try {
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-        {
-          title: 'Location Permission',
-          message: 'Runiq uses GPS to track your runs and show local leaderboards',
-          buttonPositive: 'Allow',
-          buttonNegative: 'Skip',
-        }
-      );
-      // Whether granted or denied, move forward
-      navigation.navigate('Questionnaire');
-    } catch {
-      navigation.navigate('Questionnaire');
+      await requestLocationPermissions();
+    } catch (e) {
+      console.log('permission error', e);
+    } finally {
+      setIsRequesting(false);
+      // Always navigate forward no matter what
+      navigation.replace('Questionnaire');
     }
+  };
+
+  const handleSkip = () => {
+    navigation.replace('Questionnaire');
   };
 
   return (
@@ -46,18 +46,19 @@ export default function LocationPermissionScreen({ navigation }: Props) {
       {/* Footer CTAs */}
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.primaryButton, requesting && styles.buttonDisabled]}
+          style={[styles.primaryButton, isRequesting && styles.buttonDisabled]}
           onPress={handleAllow}
           activeOpacity={0.85}
-          disabled={requesting}
+          disabled={isRequesting}
         >
           <Text style={styles.primaryButtonText}>Allow Location</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.skipButton}
-          onPress={() => navigation.navigate('Questionnaire')}
+          onPress={handleSkip}
           activeOpacity={0.7}
+          disabled={isRequesting}
         >
           <Text style={styles.skipText}>Skip for now</Text>
         </TouchableOpacity>

@@ -27,7 +27,7 @@ export default function SplashScreen({ navigation }: Props) {
     // switching to Main stack if user is already authenticated.
     const timer = setTimeout(() => {
       navigation.replace('Login');
-    }, 1500);
+    }, 700);
 
     return () => {
       clearTimeout(timer);

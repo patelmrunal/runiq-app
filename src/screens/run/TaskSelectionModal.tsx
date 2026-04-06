@@ -6,30 +6,20 @@ import {
   TouchableOpacity,
   Modal,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { X } from 'phosphor-react-native';
 import { COLORS, Typography, Spacing, BorderRadius } from '../../constants/theme';
-
-interface Task {
-  id: string;
-  title: string;
-  difficulty: 'Easy' | 'Medium' | 'Hard';
-  targetKm: number;
-  targetMin: number;
-}
+import type { RunTask } from '../../services/taskService';
 
 interface TaskSelectionModalProps {
   visible: boolean;
   onClose: () => void;
-  onSelectTask: (task: Task) => void;
+  tasks: RunTask[];
+  loading?: boolean;
+  onSelectTask: (task: RunTask) => void;
   onSelectFreeRun: () => void;
 }
-
-const DEMO_TASKS: Task[] = [
-  { id: '1', title: 'Morning 2K', difficulty: 'Easy', targetKm: 2, targetMin: 15 },
-  { id: '2', title: 'Steady 5K', difficulty: 'Medium', targetKm: 5, targetMin: 35 },
-  { id: '3', title: 'Speed 3K', difficulty: 'Hard', targetKm: 3, targetMin: 18 },
-];
 
 const DIFFICULTY_COLORS = {
   Easy: '#10B981',
@@ -40,6 +30,8 @@ const DIFFICULTY_COLORS = {
 const TaskSelectionModal: React.FC<TaskSelectionModalProps> = ({
   visible,
   onClose,
+  tasks,
+  loading = false,
   onSelectTask,
   onSelectFreeRun,
 }) => {
@@ -64,8 +56,21 @@ const TaskSelectionModal: React.FC<TaskSelectionModalProps> = ({
           </View>
 
           <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+            {loading ? (
+              <View style={styles.loaderContainer}>
+                <ActivityIndicator color={COLORS.accent} />
+              </View>
+            ) : null}
+
+            {!loading && tasks.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyTitle}>No active tasks found</Text>
+                <Text style={styles.emptySubtitle}>Add active tasks in Firestore collection auto</Text>
+              </View>
+            ) : null}
+
             {/* Task Cards */}
-            {DEMO_TASKS.map((task) => (
+            {tasks.map((task) => (
               <TouchableOpacity
                 key={task.id}
                 style={styles.taskCard}
@@ -91,7 +96,7 @@ const TaskSelectionModal: React.FC<TaskSelectionModalProps> = ({
                     </View>
                   </View>
                   <Text style={styles.taskDescription}>
-                    {task.targetKm}km • {task.targetMin} minutes
+                    {task.targetKm}km • {task.targetMinutes} minutes
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -153,6 +158,28 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     paddingHorizontal: Spacing.lg,
+  },
+  loaderContainer: {
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+  },
+  emptyCard: {
+    backgroundColor: COLORS.offWhite,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.almostBlack,
+    fontFamily: Typography.fontFamily,
+    marginBottom: 4,
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: COLORS.mediumGrey,
+    fontFamily: Typography.fontFamily,
   },
   taskCard: {
     flexDirection: 'row',

@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft } from 'phosphor-react-native';
-import { serverTimestamp, collection, doc, setDoc, updateDoc, increment } from '@react-native-firebase/firestore';
+import { serverTimestamp, Timestamp, doc, setDoc, updateDoc, increment } from '@react-native-firebase/firestore';
 import { auth, db } from '../../services/firebase';
 import { useRunStore } from '../../stores/useRunStore';
 import { useUserStore } from '../../stores/useUserStore';
@@ -13,6 +14,7 @@ type PostRunSummaryScreenProps = MainScreenProps<'PostRunSummary'>;
 const PostRunSummaryScreen: React.FC<PostRunSummaryScreenProps> = ({ navigation }) => {
   const [saving, setSaving] = useState(true);
   const [displayName, setDisplayName] = useState('Runner');
+  const hasSavedRef = useRef(false);
   const { lastSessionData } = useRunStore();
   const { displayName: storedName } = useUserStore();
 
@@ -22,10 +24,14 @@ const PostRunSummaryScreen: React.FC<PostRunSummaryScreenProps> = ({ navigation 
 
   useEffect(() => {
     const saveRun = async () => {
+      if (hasSavedRef.current) return;
+
       if (!lastSessionData || !auth.currentUser?.uid) {
         setSaving(false);
         return;
       }
+
+      hasSavedRef.current = true;
 
       try {
         const uid = auth.currentUser.uid;
@@ -33,7 +39,6 @@ const PostRunSummaryScreen: React.FC<PostRunSummaryScreenProps> = ({ navigation 
           runId,
           session,
           taskId,
-          taskTitle,
           targetKm,
           targetMinutes,
           difficulty,
@@ -49,6 +54,12 @@ const PostRunSummaryScreen: React.FC<PostRunSummaryScreenProps> = ({ navigation 
           : 0;
         const calories = Math.round(distanceKm * 70 * 1.036);
 
+        // Skip persistence for empty/instant sessions to avoid rejected writes.
+        if (durationSeconds <= 0 || distanceKm <= 0) {
+          setSaving(false);
+          return;
+        }
+
         // Save to Firestore
         const runLogRef = doc(db, `users/${uid}/runLog`, runId);
         await setDoc(runLogRef, {
@@ -59,8 +70,8 @@ const PostRunSummaryScreen: React.FC<PostRunSummaryScreenProps> = ({ navigation 
           taskDifficulty: difficulty?.toLowerCase() || 'easy',
           taskTargetKm: targetKm || 0,
           taskTargetMinutes: targetMinutes || 0,
-          startTime: session.startTime,
-          endTime: Date.now(),
+          startTime: Timestamp.fromMillis(session.startTime),
+          endTime: Timestamp.fromMillis(Date.now()),
           duration: durationSeconds,
           distance: distanceKm,
           avgPace: avgPaceMinKm,
@@ -102,7 +113,7 @@ const PostRunSummaryScreen: React.FC<PostRunSummaryScreenProps> = ({ navigation 
     };
 
     saveRun();
-  }, []);
+  }, [lastSessionData, storedName]);
 
   if (!lastSessionData) {
     return (

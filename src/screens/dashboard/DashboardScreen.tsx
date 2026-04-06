@@ -12,19 +12,12 @@ import LinearGradient from 'react-native-linear-gradient';
 import { CaretRight } from 'phosphor-react-native';
 import { doc, onSnapshot } from '@react-native-firebase/firestore';
 import { auth, db } from '../../services/firebase';
+import { subscribeToRunTasks, type RunTask } from '../../services/taskService';
 import { useUserStore } from '../../stores/useUserStore';
 import type { TabScreenProps } from '../../navigation';
 import { COLORS, SPACING } from '../../constants/theme';
 
 type Props = TabScreenProps<'Dashboard'>;
-
-// ─── Demo tasks (hardcoded for Phase 1) ───────────────────────────────────────
-
-const DEMO_TASKS = [
-  { id: '1', title: 'Morning 2K', difficulty: 'Easy', targetKm: 2, targetMin: 15 },
-  { id: '2', title: 'Steady 5K', difficulty: 'Medium', targetKm: 5, targetMin: 35 },
-  { id: '3', title: 'Speed 3K', difficulty: 'Hard', targetKm: 3, targetMin: 18 },
-];
 
 const DIFFICULTY_COLORS = {
   Easy: '#10B981',
@@ -34,7 +27,9 @@ const DIFFICULTY_COLORS = {
 
 export default function DashboardScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
-  const { displayName, currentStreak, level, tier } = useUserStore();
+  const [tasksLoading, setTasksLoading] = useState(true);
+  const [tasks, setTasks] = useState<RunTask[]>([]);
+  const { displayName, currentStreak, level } = useUserStore();
 
   useEffect(() => {
     const uid = auth.currentUser?.uid;
@@ -77,6 +72,20 @@ export default function DashboardScreen({ navigation }: Props) {
     );
 
     return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToRunTasks(
+      (loadedTasks) => {
+        setTasks(loadedTasks);
+        setTasksLoading(false);
+      },
+      () => {
+        setTasksLoading(false);
+      }
+    );
+
+    return unsubscribe;
   }, []);
 
   // Calculate greeting based on time
@@ -134,7 +143,20 @@ export default function DashboardScreen({ navigation }: Props) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Today's Tasks</Text>
 
-          {DEMO_TASKS.map((task) => (
+          {tasksLoading ? (
+            <View style={styles.inlineLoaderContainer}>
+              <ActivityIndicator color={COLORS.accent} />
+            </View>
+          ) : null}
+
+          {!tasksLoading && tasks.length === 0 ? (
+            <View style={styles.emptyTaskCard}>
+              <Text style={styles.emptyTaskTitle}>No active tasks available</Text>
+              <Text style={styles.emptyTaskSubtitle}>Please add active tasks in Firestore</Text>
+            </View>
+          ) : null}
+
+          {tasks.map((task) => (
             <TouchableOpacity
               key={task.id}
               style={styles.taskCard}
@@ -147,8 +169,8 @@ export default function DashboardScreen({ navigation }: Props) {
                     taskId: task.id,
                     taskTitle: task.title,
                     targetKm: task.targetKm,
-                    targetMinutes: task.targetMin,
-                    difficulty: task.difficulty as 'Easy' | 'Medium' | 'Hard',
+                    targetMinutes: task.targetMinutes,
+                    difficulty: task.difficulty,
                   });
                 }
               }}
@@ -173,7 +195,7 @@ export default function DashboardScreen({ navigation }: Props) {
                   <CaretRight size={20} color="#71717A" weight="bold" />
                 </View>
                 <Text style={styles.taskDescription}>
-                  {task.targetKm}km • {task.targetMin} minutes
+                  {task.targetKm}km • {task.targetMinutes} minutes
                 </Text>
               </View>
             </TouchableOpacity>
@@ -269,6 +291,28 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.almostBlack,
     marginBottom: SPACING.md,
+  },
+  inlineLoaderContainer: {
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+  },
+  emptyTaskCard: {
+    backgroundColor: '#F8F8F8',
+    borderRadius: 20,
+    padding: SPACING.lg,
+    marginBottom: SPACING.md,
+  },
+  emptyTaskTitle: {
+    fontFamily: 'Inter',
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.almostBlack,
+    marginBottom: 4,
+  },
+  emptyTaskSubtitle: {
+    fontFamily: 'Inter',
+    fontSize: 13,
+    color: COLORS.mediumGrey,
   },
   taskCard: {
     flexDirection: 'row',

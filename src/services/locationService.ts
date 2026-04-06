@@ -1,4 +1,35 @@
 import { PermissionsAndroid, Platform, Linking, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const BATTERY_PROMPT_SEEN_KEY = 'runiq_battery_prompt_seen_v1';
+const BG_TRACKING_FAILURE_COUNT_KEY = 'runiq_bg_tracking_failure_count_v1';
+const REPROMPT_FAILURE_THRESHOLD = 2;
+
+const getBackgroundFailureCount = async (): Promise<number> => {
+  const raw = await AsyncStorage.getItem(BG_TRACKING_FAILURE_COUNT_KEY);
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : 0;
+};
+
+export async function incrementBackgroundTrackingFailureCount(): Promise<number> {
+  const next = (await getBackgroundFailureCount()) + 1;
+  await AsyncStorage.setItem(BG_TRACKING_FAILURE_COUNT_KEY, String(next));
+  return next;
+}
+
+export async function resetBackgroundTrackingFailureCount(): Promise<void> {
+  await AsyncStorage.setItem(BG_TRACKING_FAILURE_COUNT_KEY, '0');
+}
+
+export async function shouldPromptBatteryOptimization(): Promise<boolean> {
+  if (Platform.OS !== 'android') return false;
+
+  const promptSeen = (await AsyncStorage.getItem(BATTERY_PROMPT_SEEN_KEY)) === '1';
+  const failureCount = await getBackgroundFailureCount();
+
+  if (!promptSeen) return true;
+  return failureCount >= REPROMPT_FAILURE_THRESHOLD;
+}
 
 /**
  * Request location permissions - works on ALL Android versions
@@ -8,33 +39,42 @@ import { PermissionsAndroid, Platform, Linking, Alert } from 'react-native';
 export async function requestLocationPermissions(): Promise<boolean> {
   if (Platform.OS !== 'android') return false;
 
-  // Step 1: Request fine location (required for all versions)
-  const fine = await PermissionsAndroid.request(
-    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-    {
-      title: 'Location Permission',
-      message: 'Runiq needs GPS to track your runs accurately',
-      buttonPositive: 'Allow',
-      buttonNegative: 'Not now',
-    }
-  );
-
-  if (fine !== PermissionsAndroid.RESULTS.GRANTED) return false;
-
-  // Step 2: Request background location (Android 10+ / API 29+)
-  if (Platform.Version >= 29) {
-    await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
+  try {
+    const fine = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
       {
-        title: 'Background Location',
-        message: 'Allow Runiq to track GPS when screen is off',
-        buttonPositive: 'Allow always',
-        buttonNegative: 'Skip',
+        title: 'Location Permission',
+        message: 'Runiq needs GPS to track your runs accurately',
+        buttonPositive: 'Allow',
+        buttonNegative: 'Not now',
       }
     );
-  }
 
-  return true;
+    if (fine !== PermissionsAndroid.RESULTS.GRANTED) {
+      return false;
+    }
+
+    if (Platform.Version >= 29) {
+      const background = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
+        {
+          title: 'Background Location',
+          message: 'Allow Runiq to track GPS when screen is off',
+          buttonPositive: 'Allow always',
+          buttonNegative: 'Not now',
+        }
+      );
+
+      if (background !== PermissionsAndroid.RESULTS.GRANTED) {
+        return false;
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.warn('[locationService] Permission request failed:', error);
+    return false;
+  }
 }
 
 /**
@@ -45,18 +85,39 @@ export async function requestLocationPermissions(): Promise<boolean> {
 export async function requestBatteryOptimizationExemption(): Promise<void> {
   if (Platform.OS !== 'android') return;
 
-  Alert.alert(
-    'Important for Run Tracking',
-    'To keep GPS running when your screen is off, please disable battery optimization for Runiq.',
-    [
-      {
-        text: 'Open Settings',
-        onPress: () => {
-          // Opens app-specific settings where user can disable battery optimization
-          Linking.openSettings();
+  const shouldPrompt = await shouldPromptBatteryOptimization();
+  if (!shouldPrompt) return;
+
+  await new Promise<void>((resolve) => {
+    Alert.alert(
+      'Keep Run Tracking Reliable',
+      'For stable background tracking, set battery usage for Runiq to unrestricted in app settings.',
+      [
+        {
+          text: 'Open Settings',
+          onPress: async () => {
+            try {
+              await Linking.openSettings();
+            } catch (error) {
+              console.warn('[locationService] Failed to open settings:', error);
+            } finally {
+              resolve();
+            }
+          },
         },
-      },
-      { text: 'Skip', style: 'cancel' },
-    ]
-  );
+        {
+          text: 'Not now',
+          style: 'cancel',
+          onPress: () => resolve(),
+        },
+      ],
+      {
+        cancelable: true,
+        onDismiss: () => resolve(),
+      }
+    );
+  });
+
+  await AsyncStorage.setItem(BATTERY_PROMPT_SEEN_KEY, '1');
+  await resetBackgroundTrackingFailureCount();
 }

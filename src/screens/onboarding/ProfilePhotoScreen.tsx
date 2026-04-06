@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { launchImageLibrary, type ImagePickerResponse } from 'react-native-image-picker';
 import storage from '@react-native-firebase/storage';
-import { auth } from '../../services/firebase';
+import { doc, getDoc } from '@react-native-firebase/firestore';
+import { auth, db } from '../../services/firebase';
 import { updateUserDocument } from '../../services/userService';
 import type { OnboardingScreenProps } from '../../navigation';
 import { COLORS, SPACING } from '../../constants/theme';
@@ -20,6 +21,35 @@ type Props = OnboardingScreenProps<'ProfilePhoto'>;
 export default function ProfilePhotoScreen({ navigation }: Props) {
   const [uploading, setUploading] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [checkingExisting, setCheckingExisting] = useState(true);
+
+  // Check if user already has a photo on mount
+  useEffect(() => {
+    const checkExistingPhoto = async () => {
+      try {
+        const uid = auth.currentUser?.uid;
+        if (!uid) {
+          setCheckingExisting(false);
+          return;
+        }
+
+        const userDoc = await getDoc(doc(db, 'users', uid));
+        const photoURL = userDoc.data()?.photoURL;
+
+        if (photoURL) {
+          // Already has photo, skip this screen
+          navigation.replace('LocationPermission');
+          return;
+        }
+      } catch (error) {
+        console.error('[ProfilePhoto] Error checking existing photo:', error);
+      } finally {
+        setCheckingExisting(false);
+      }
+    };
+
+    checkExistingPhoto();
+  }, [navigation]);
 
   async function handlePickImage() {
     try {
@@ -72,7 +102,14 @@ export default function ProfilePhotoScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+      {checkingExisting ? (
+        <View style={styles.content}>
+          <ActivityIndicator size="large" color={COLORS.accent} />
+          <Text style={styles.checkingText}>Checking profile...</Text>
+        </View>
+      ) : (
+        <>
+          <View style={styles.content}>
         {/* Title */}
         <Text style={styles.title}>Add a profile photo</Text>
         <Text style={styles.subtitle}>
@@ -133,6 +170,8 @@ export default function ProfilePhotoScreen({ navigation }: Props) {
           </Text>
         </TouchableOpacity>
       </View>
+        </>
+      )}
     </SafeAreaView>
   );
 }
@@ -148,6 +187,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingBottom: SPACING.xl,
+  },
+  checkingText: {
+    fontFamily: 'Inter',
+    fontSize: 14,
+    color: COLORS.mediumGrey,
+    marginTop: SPACING.md,
   },
   title: {
     fontFamily: 'Inter',
