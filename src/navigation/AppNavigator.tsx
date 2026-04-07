@@ -39,6 +39,10 @@ const PostRunSummaryScreen = React.lazy(() =>
   import('../screens/run').then((module) => ({ default: module.PostRunSummaryScreen }))
 );
 
+const RunDetailScreen = React.lazy(() =>
+  import('../screens/run').then((module) => ({ default: module.RunDetailScreen }))
+);
+
 const TaskSelectionModal = React.lazy(() => import('../screens/run/TaskSelectionModal'));
 
 // ─── Placeholder (swap out as real screens are built) ──────────────────────────
@@ -90,6 +94,7 @@ export type MainStackParamList = {
     difficulty?: 'Easy' | 'Medium' | 'Hard';
   } | undefined;
   PostRunSummary: { runId: string };
+  RunDetail: { runId: string };
   BadgeDetail: { badgeId: string };
   StoryCard: { cardId: string };
   MissionCreate: undefined;
@@ -285,6 +290,11 @@ function MainNavigator() {
           name="PostRunSummary"
           component={PostRunSummaryScreen}
           options={{ presentation: 'modal' }}
+        />
+        <MainStack.Screen
+          name="RunDetail"
+          component={RunDetailScreen}
+          options={{ presentation: 'card' }}
         />
         <MainStack.Screen
           name="BadgeDetail"

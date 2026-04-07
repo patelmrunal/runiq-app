@@ -7,7 +7,7 @@ import AppNavigator from './src/navigation/AppNavigator';
 // ─── Global Error Handler ───────────────────────────────────────────────────────
 // Logs the exact crash reason before app closes
 
-const ErrorUtils = (global as any).ErrorUtils;
+const ErrorUtils = (globalThis as any).ErrorUtils;
 if (ErrorUtils) {
   const originalHandler = ErrorUtils.getGlobalHandler();
   ErrorUtils.setGlobalHandler((error: any, isFatal: boolean) => {

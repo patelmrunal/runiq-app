@@ -10,7 +10,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SignOut } from 'phosphor-react-native';
-import { doc, onSnapshot, query, collection, orderBy, limit, Query } from '@react-native-firebase/firestore';
+import type { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
+import { doc, onSnapshot, query, collection, orderBy, limit } from '@react-native-firebase/firestore';
 import { auth, db } from '../../services/firebase';
 import { logout } from '../../services/firebase/auth';
 import { useUserStore } from '../../stores/useUserStore';
@@ -18,16 +19,104 @@ import type { TabScreenProps } from '../../navigation';
 import { COLORS, SPACING } from '../../constants/theme';
 
 type Props = TabScreenProps<'Profile'>;
+type TaskResult = 'completed' | 'failed' | 'free_run';
+
+const TASK_COMPLETION_EPSILON_KM = 0.005;
 
 interface RunItem {
   runId: string;
   createdAt: any;
+  startTime: any;
+  endTime: any;
   distance: number;
   duration: number;
   avgPace: number;
+  taskId: string;
+  taskResult: TaskResult;
+  taskCompleted: boolean;
+  motivationMessage: string;
+  taskTargetKm: number;
+  taskProgressPct: number;
 }
 
-export default function ProfileScreen({}: Props) {
+interface DerivedRunOutcome {
+  hasTaskGoal: boolean;
+  completed: boolean;
+  result: TaskResult;
+  label: string;
+  color: string;
+  progressPct: number;
+  message: string;
+}
+
+const toMillis = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  const maybeTimestamp = value as { toDate?: () => Date } | null;
+  if (maybeTimestamp?.toDate) {
+    return maybeTimestamp.toDate().getTime();
+  }
+
+  return null;
+};
+
+const formatRunDate = (value: unknown): string => {
+  const millis = toMillis(value);
+  if (!millis) return 'N/A';
+
+  return new Date(millis).toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+};
+
+const format24Hour = (value: unknown): string => {
+  const millis = toMillis(value);
+  if (!millis) return '--:--';
+
+  return new Date(millis).toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+};
+
+const deriveRunOutcome = (run: RunItem): DerivedRunOutcome => {
+  const targetKm = Number.isFinite(run.taskTargetKm) ? Math.max(0, run.taskTargetKm) : 0;
+  const hasTaskGoal = Boolean(run.taskId && run.taskId !== 'free_run' && targetKm > 0);
+
+  if (!hasTaskGoal) {
+    return {
+      hasTaskGoal: false,
+      completed: true,
+      result: 'free_run',
+      label: 'Free run',
+      color: '#2563EB',
+      progressPct: 100,
+      message: run.motivationMessage,
+    };
+  }
+
+  const completed = run.distance + TASK_COMPLETION_EPSILON_KM >= targetKm;
+  const progressPct = Math.min(100, Math.round((run.distance / targetKm) * 100));
+
+  return {
+    hasTaskGoal: true,
+    completed,
+    result: completed ? 'completed' : 'failed',
+    label: completed ? 'Task completed' : 'Task not completed',
+    color: completed ? '#10B981' : '#E94560',
+    progressPct,
+    message: run.motivationMessage || (completed
+      ? 'Great job. You hit your target for this run.'
+      : 'You are close. Keep showing up and finish strong next run.'),
+  };
+};
+
+export default function ProfileScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [recentRuns, setRecentRuns] = useState<RunItem[]>([]);
   const {
@@ -94,20 +183,28 @@ export default function ProfileScreen({}: Props) {
       collection(db, `users/${uid}/runLog`),
       orderBy('createdAt', 'desc'),
       limit(5)
-    ) as Query;
+    );
 
     const unsubscribe = onSnapshot(
       runLogQuery,
       (snapshot) => {
         const runs: RunItem[] = [];
-        snapshot.docs.forEach((doc) => {
-          const data = doc.data();
+        snapshot.docs.forEach((docSnap: FirebaseFirestoreTypes.QueryDocumentSnapshot<FirebaseFirestoreTypes.DocumentData>) => {
+          const data = docSnap.data();
           runs.push({
-            runId: doc.id,
+            runId: docSnap.id,
             createdAt: data.createdAt,
+            startTime: data.startTime,
+            endTime: data.endTime,
             distance: data.distance || 0,
             duration: data.duration || 0,
             avgPace: data.avgPace || 0,
+            taskId: typeof data.taskId === 'string' ? data.taskId : '',
+            taskResult: (data.taskResult as RunItem['taskResult']) || 'free_run',
+            taskCompleted: Boolean(data.taskCompleted),
+            motivationMessage: typeof data.motivationMessage === 'string' ? data.motivationMessage : '',
+            taskTargetKm: Number(data.taskTargetKm || 0),
+            taskProgressPct: Number(data.taskProgressPct || 0),
           });
         });
         setRecentRuns(runs);
@@ -230,18 +327,26 @@ export default function ProfileScreen({}: Props) {
             </View>
           ) : (
             recentRuns.map((run) => {
-              const runDate = run.createdAt?.toDate?.()
-                ? new Date(run.createdAt.toDate()).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                  })
-                : 'N/A';
+              const runDate = formatRunDate(run.startTime || run.createdAt);
+              const startTime24 = format24Hour(run.startTime);
+              const endTime24 = format24Hour(run.endTime);
+              const outcome = deriveRunOutcome(run);
 
               const durationMin = Math.floor(run.duration / 60);
               const durationSec = run.duration % 60;
 
               return (
-                <View key={run.runId} style={styles.runCard}>
+                <TouchableOpacity
+                  key={run.runId}
+                  style={styles.runCard}
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    const parentNav = navigation.getParent();
+                    if (parentNav) {
+                      (parentNav as any).navigate('RunDetail', { runId: run.runId });
+                    }
+                  }}
+                >
                   <View style={styles.runHeader}>
                     <Text style={styles.runDate}>{runDate}</Text>
                     <Text style={styles.runDistance}>{run.distance.toFixed(1)} km</Text>
@@ -252,7 +357,19 @@ export default function ProfileScreen({}: Props) {
                     </Text>
                     <Text style={styles.runPace}>{run.avgPace.toFixed(2)} min/km</Text>
                   </View>
-                </View>
+                  <Text style={styles.runTimeRange}>{startTime24} - {endTime24} (24h)</Text>
+                  <View style={styles.runStatusRow}>
+                    <View style={[styles.runStatusBadge, { backgroundColor: `${outcome.color}20` }]}> 
+                      <Text style={[styles.runStatusText, { color: outcome.color }]}>{outcome.label}</Text>
+                    </View>
+                    {outcome.hasTaskGoal ? (
+                      <Text style={styles.progressText}>{run.distance.toFixed(2)} / {run.taskTargetKm.toFixed(2)} km ({outcome.progressPct}%)</Text>
+                    ) : null}
+                  </View>
+                  {!!outcome.message ? (
+                    <Text numberOfLines={2} style={styles.runLogText}>{outcome.message}</Text>
+                  ) : null}
+                </TouchableOpacity>
               );
             })
           )}
@@ -501,5 +618,39 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter',
     fontSize: 13,
     color: COLORS.mediumGrey,
+  },
+  runTimeRange: {
+    marginTop: 8,
+    fontFamily: 'Inter',
+    fontSize: 12,
+    color: COLORS.mediumGrey,
+  },
+  runStatusRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  runStatusBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  runStatusText: {
+    fontFamily: 'Inter',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  progressText: {
+    fontFamily: 'Inter',
+    fontSize: 12,
+    color: COLORS.mediumGrey,
+  },
+  runLogText: {
+    marginTop: 8,
+    fontFamily: 'Inter',
+    fontSize: 12,
+    color: COLORS.mediumGrey,
+    lineHeight: 18,
   },
 });
