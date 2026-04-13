@@ -15,6 +15,23 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    match /users/{userId}/dailyTasks/{taskId} {
+      allow read: if request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    match /users/{userId}/events/{eventId} {
+      allow read: if request.auth.uid == userId;
+      allow update: if request.auth.uid == userId
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly(['seen', 'seenAt'])
+        && request.resource.data.seen == true;
+      allow create, delete: if false;
+    }
+
+    match /users/{userId}/devices/{deviceId} {
+      allow read, write: if request.auth.uid == userId;
+    }
+
     match /users/{userId}/badges/{badgeId} {
       allow read: if request.auth.uid == userId;
       allow write: if false;

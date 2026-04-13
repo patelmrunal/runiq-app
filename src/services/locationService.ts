@@ -31,6 +31,32 @@ export async function shouldPromptBatteryOptimization(): Promise<boolean> {
   return failureCount >= REPROMPT_FAILURE_THRESHOLD;
 }
 
+export async function areLocationPermissionsGranted(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
+
+  try {
+    const fineGranted = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+    );
+
+    if (!fineGranted) {
+      return false;
+    }
+
+    if (Platform.Version >= 29) {
+      const backgroundGranted = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION
+      );
+      return backgroundGranted;
+    }
+
+    return true;
+  } catch (error) {
+    console.warn('[locationService] Permission check failed:', error);
+    return false;
+  }
+}
+
 /**
  * Request location permissions - works on ALL Android versions
  * Android 6-9: Only fine location needed

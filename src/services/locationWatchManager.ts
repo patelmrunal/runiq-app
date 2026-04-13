@@ -3,6 +3,7 @@ import { logTelemetry } from './telemetryService';
 
 let activeWatchId: number | null = null;
 let activeWatchOwner: string | null = null;
+let watchLockOwner: string | null = null;
 
 const clearActiveWatch = () => {
   if (activeWatchId === null) {
@@ -34,6 +35,20 @@ export const startGlobalLocationWatch = (
   onError: (error: Geolocation.GeoError) => void,
   options: any
 ): number => {
+  if (watchLockOwner && watchLockOwner !== owner) {
+    logTelemetry(
+      'gps.watch.global_start_blocked_by_lock',
+      {
+        owner,
+        lockOwner: watchLockOwner,
+        activeOwner: activeWatchOwner,
+        activeWatchId,
+      },
+      'warn'
+    );
+    throw new Error(`Global location watch is locked by ${watchLockOwner}`);
+  }
+
   if (activeWatchId !== null) {
     logTelemetry('gps.watch.global_replaced', {
       previousOwner: activeWatchOwner,
@@ -90,6 +105,20 @@ export const startGlobalLocationWatch = (
 };
 
 export const stopGlobalLocationWatch = (owner: string, watchId?: number): void => {
+  if (watchLockOwner && watchLockOwner !== owner) {
+    logTelemetry(
+      'gps.watch.global_stop_blocked_by_lock',
+      {
+        owner,
+        lockOwner: watchLockOwner,
+        activeOwner: activeWatchOwner,
+        activeWatchId,
+      },
+      'warn'
+    );
+    return;
+  }
+
   if (activeWatchId === null) {
     return;
   }
@@ -107,7 +136,30 @@ export const stopGlobalLocationWatch = (owner: string, watchId?: number): void =
   clearActiveWatch();
 };
 
+export const lockGlobalLocationWatch = (owner: string): void => {
+  watchLockOwner = owner;
+  logTelemetry('gps.watch.global_lock_enabled', {
+    owner,
+    activeOwner: activeWatchOwner,
+    activeWatchId,
+  });
+};
+
+export const unlockGlobalLocationWatch = (owner: string): void => {
+  if (watchLockOwner !== owner) {
+    return;
+  }
+
+  watchLockOwner = null;
+  logTelemetry('gps.watch.global_lock_disabled', {
+    owner,
+    activeOwner: activeWatchOwner,
+    activeWatchId,
+  });
+};
+
 export const getGlobalLocationWatchState = () => ({
   watchId: activeWatchId,
   owner: activeWatchOwner,
+  lockOwner: watchLockOwner,
 });

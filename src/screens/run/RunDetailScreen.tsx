@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -30,6 +31,8 @@ interface RunDetailData {
   createdAt?: any;
   startTime?: any;
   endTime?: any;
+  status?: string;
+  flagReason?: string | null;
   duration: number;
   distance: number;
   avgPace: number;
@@ -123,6 +126,40 @@ const parseRoutePoints = (raw: unknown): RoutePoint[] => {
   }
 };
 
+const getFlagReviewDetails = (flagReason: string | null) => {
+  const reason = typeof flagReason === 'string' ? flagReason : '';
+
+  if (reason === 'sparse_gps') {
+    return {
+      label: 'GPS review needed',
+      message: 'GPS trace was sparse in this run, so progression updates were not fully applied.',
+      code: 'sparse_gps',
+    };
+  }
+
+  if (reason === 'impossible_pace') {
+    return {
+      label: 'Pace review needed',
+      message: 'Recorded pace was faster than human running range, so this run is under review.',
+      code: 'impossible_pace',
+    };
+  }
+
+  if (reason === 'invalid_run_payload') {
+    return {
+      label: 'Run data incomplete',
+      message: 'Run payload was incomplete, so this run is under review.',
+      code: 'invalid_run_payload',
+    };
+  }
+
+  return {
+    label: 'Review needed',
+    message: 'This run is under review due to data quality checks.',
+    code: reason || 'unknown',
+  };
+};
+
 const deriveTaskEvaluation = (runData: RunDetailData | null): TaskEvaluation => {
   if (!runData) {
     return {
@@ -199,6 +236,8 @@ const RunDetailScreen: React.FC<RunDetailScreenProps> = ({ navigation, route }) 
           createdAt: data.createdAt,
           startTime: data.startTime,
           endTime: data.endTime,
+          status: typeof data.status === 'string' ? data.status : 'pending',
+          flagReason: typeof data.flagReason === 'string' ? data.flagReason : null,
           duration: Number(data.duration || 0),
           distance: Number(data.distance || 0),
           avgPace: Number(data.avgPace || 0),
@@ -226,6 +265,8 @@ const RunDetailScreen: React.FC<RunDetailScreenProps> = ({ navigation, route }) 
 
   const routePoints = useMemo(() => parseRoutePoints(runData?.routePolyline), [runData?.routePolyline]);
   const taskEvaluation = useMemo(() => deriveTaskEvaluation(runData), [runData]);
+  const isFlagged = typeof runData?.status === 'string' && runData.status.toLowerCase() === 'flagged';
+  const reviewDetails = useMemo(() => getFlagReviewDetails(runData?.flagReason ?? null), [runData?.flagReason]);
 
   const mapRegion = useMemo(() => {
     const first = routePoints[0];
@@ -365,6 +406,26 @@ const RunDetailScreen: React.FC<RunDetailScreenProps> = ({ navigation, route }) 
             ) : null}
           </View>
         </View>
+
+        {isFlagged ? (
+          <View style={styles.reviewCard}>
+            <Text style={styles.sectionTitle}>Run Review</Text>
+            <Text style={styles.reviewStatus}>{reviewDetails.label}</Text>
+            <Text style={styles.reviewMessage}>{reviewDetails.message}</Text>
+            <TouchableOpacity
+              activeOpacity={0.75}
+              style={styles.reviewInfoButton}
+              onPress={() => {
+                Alert.alert(
+                  'Run Review Details',
+                  `Reason code: ${reviewDetails.code}\n\n${reviewDetails.message}`
+                );
+              }}
+            >
+              <Text style={styles.reviewInfoButtonText}>What happened?</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         {taskEvaluation.hasTaskGoal ? (
           <View style={styles.taskCard}>
@@ -537,6 +598,38 @@ const styles = StyleSheet.create({
     color: COLORS.mediumGrey,
     fontFamily: Typography.fontFamily,
     lineHeight: 20,
+  },
+  reviewCard: {
+    backgroundColor: '#FFF6EB',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+  },
+  reviewStatus: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#D97706',
+    fontFamily: Typography.fontFamily,
+  },
+  reviewMessage: {
+    marginTop: Spacing.sm,
+    fontSize: 14,
+    color: COLORS.mediumGrey,
+    fontFamily: Typography.fontFamily,
+    lineHeight: 20,
+  },
+  reviewInfoButton: {
+    marginTop: Spacing.sm,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: '#EFE1C8',
+  },
+  reviewInfoButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#7A4A00',
+    fontFamily: Typography.fontFamily,
   },
 });
 

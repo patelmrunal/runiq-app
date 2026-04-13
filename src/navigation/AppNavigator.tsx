@@ -1,18 +1,29 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
-import { useNavigation } from '@react-navigation/native';
 import { House, Play, User, DotsNine } from 'phosphor-react-native';
 import { onAuthStateChanged } from '@react-native-firebase/auth';
-import { doc, onSnapshot, getDoc } from '@react-native-firebase/firestore';
+import {
+  collection,
+  doc,
+  getDoc,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  updateDoc,
+  where,
+} from '@react-native-firebase/firestore';
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { auth, db } from '../services/firebase';
 import { createUserDocument } from '../services/userService';
-import { subscribeToRunTasks, type RunTask } from '../services/taskService';
+import { startNotificationTokenSync } from '../services/notificationService';
 import LoginScreen from '../screens/auth/LoginScreen';
 import RegisterScreen from '../screens/auth/RegisterScreen';
 import SplashScreen from '../screens/SplashScreen';
@@ -31,6 +42,10 @@ const ProfileScreen = React.lazy(() =>
   import('../screens/profile').then((module) => ({ default: module.ProfileScreen }))
 );
 
+const MoreScreen = React.lazy(() =>
+  import('../screens/more').then((module) => ({ default: module.MoreScreen }))
+);
+
 const RunTrackingScreen = React.lazy(() =>
   import('../screens/run').then((module) => ({ default: module.RunTrackingScreen }))
 );
@@ -42,8 +57,9 @@ const PostRunSummaryScreen = React.lazy(() =>
 const RunDetailScreen = React.lazy(() =>
   import('../screens/run').then((module) => ({ default: module.RunDetailScreen }))
 );
-
-const TaskSelectionModal = React.lazy(() => import('../screens/run/TaskSelectionModal'));
+const RunHubScreen = React.lazy(() =>
+  import('../screens/run').then((module) => ({ default: module.RunHubScreen }))
+);
 
 // ─── Placeholder (swap out as real screens are built) ──────────────────────────
 
@@ -61,6 +77,67 @@ const ScreenFallback = ({ label = 'Loading...' }: { label?: string }) => (
     <Text style={styles.loadingSubtitle}>{label}</Text>
   </View>
 );
+
+type LevelUpCelebrationOverlayProps = {
+  visible: boolean;
+  level: number;
+  onFinished: () => void;
+};
+
+function LevelUpCelebrationOverlay({ visible, level, onFinished }: LevelUpCelebrationOverlayProps) {
+  const overlayOpacity = useSharedValue(0);
+  const cardScale = useSharedValue(0.9);
+
+  useEffect(() => {
+    if (!visible) {
+      overlayOpacity.value = 0;
+      cardScale.value = 0.9;
+      return;
+    }
+
+    overlayOpacity.value = withTiming(1, {
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+    });
+
+    cardScale.value = withTiming(1, {
+      duration: 320,
+      easing: Easing.out(Easing.cubic),
+    });
+
+    const timer = setTimeout(() => {
+      overlayOpacity.value = withTiming(0, {
+        duration: 240,
+        easing: Easing.in(Easing.cubic),
+      });
+      setTimeout(() => {
+        onFinished();
+      }, 260);
+    }, 2100);
+
+    return () => clearTimeout(timer);
+  }, [cardScale, onFinished, overlayOpacity, visible]);
+
+  const overlayStyle = useAnimatedStyle(() => ({
+    opacity: overlayOpacity.value,
+  }));
+
+  const cardStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: cardScale.value }],
+  }));
+
+  if (!visible) return null;
+
+  return (
+    <Animated.View pointerEvents="none" style={[styles.levelUpOverlay, overlayStyle]}>
+      <Animated.View style={[styles.levelUpCard, cardStyle]}>
+        <Text style={styles.levelUpEyebrow}>Level Up</Text>
+        <Text style={styles.levelUpTitle}>Level {level}</Text>
+        <Text style={styles.levelUpSubtitle}>New features are now unlocked. Keep your streak alive.</Text>
+      </Animated.View>
+    </Animated.View>
+  );
+}
 
 // ─── Param lists ───────────────────────────────────────────────────────────────
 
@@ -159,55 +236,9 @@ function AuthNavigator() {
 // ─── Bottom tab navigator ──────────────────────────────────────────────────────
 
 function BottomTabNavigator() {
-  const [showTaskModal, setShowTaskModal] = React.useState(false);
-  const [tasks, setTasks] = React.useState<RunTask[]>([]);
-  const [tasksLoading, setTasksLoading] = React.useState(true);
-  const navigation = useNavigation<any>();
-
-  React.useEffect(() => {
-    const unsubscribe = subscribeToRunTasks(
-      (loadedTasks) => {
-        setTasks(loadedTasks);
-        setTasksLoading(false);
-      },
-      () => {
-        setTasksLoading(false);
-      }
-    );
-
-    return unsubscribe;
-  }, []);
-
-  const handleSelectTask = (task: RunTask) => {
-    setShowTaskModal(false);
-    setTimeout(() => {
-      navigation.navigate('RunTracking', {
-        taskId: task.id,
-        taskTitle: task.title,
-        targetKm: task.targetKm,
-        targetMinutes: task.targetMinutes,
-        difficulty: task.difficulty,
-      });
-    }, 300);
-  };
-
-  const handleSelectFreeRun = () => {
-    setShowTaskModal(false);
-    setTimeout(() => {
-      navigation.navigate('RunTracking', {
-        taskId: 'free_run',
-        taskTitle: 'Free Run',
-        targetKm: 5,
-        targetMinutes: 30,
-        difficulty: 'Easy' as const,
-      });
-    }, 300);
-  };
-
   return (
     <React.Suspense fallback={<ScreenFallback label="Loading screens..." />}>
-      <>
-        <Tab.Navigator
+      <Tab.Navigator
           screenOptions={({ route }) => ({
           headerShown: false,
           tabBarStyle: {
@@ -247,29 +278,10 @@ function BottomTabNavigator() {
         })}
       >
         <Tab.Screen name="Dashboard" component={DashboardScreen} />
-        <Tab.Screen
-          name="Run"
-          component={PlaceholderScreen}
-          listeners={{
-            tabPress: (e) => {
-              e.preventDefault();
-              setShowTaskModal(true);
-            },
-          }}
-        />
+        <Tab.Screen name="Run" component={RunHubScreen} />
         <Tab.Screen name="Profile" component={ProfileScreen} />
-        <Tab.Screen name="More" component={PlaceholderScreen} />
+        <Tab.Screen name="More" component={MoreScreen} />
       </Tab.Navigator>
-
-        <TaskSelectionModal
-          visible={showTaskModal}
-          tasks={tasks}
-          loading={tasksLoading}
-          onClose={() => setShowTaskModal(false)}
-          onSelectTask={handleSelectTask}
-          onSelectFreeRun={handleSelectFreeRun}
-        />
-      </>
     </React.Suspense>
   );
 }
@@ -323,6 +335,7 @@ export default function AppNavigator() {
   const [appState, setAppState] = useState<'auth' | 'onboarding' | 'main'>('auth');
   const [loading, setLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(true);
+  const [levelUpEvent, setLevelUpEvent] = useState<{ id: string; level: number } | null>(null);
 
   // Monitor network connectivity
   useEffect(() => {
@@ -409,6 +422,71 @@ export default function AppNavigator() {
     return unsubscribe;
   }, [user, appState]);
 
+  // Keep FCM token in sync for the authenticated user.
+  useEffect(() => {
+    if (!user?.uid) return;
+    return startNotificationTokenSync(user.uid);
+  }, [user?.uid]);
+
+  // Listen for new level-up events and show celebration overlay once.
+  useEffect(() => {
+    if (!user?.uid || appState !== 'main') return;
+
+    const levelEventsQuery = query(
+      collection(db, 'users', user.uid, 'events'),
+      where('type', '==', 'level_up'),
+      where('seen', '==', false),
+      orderBy('createdAt', 'desc'),
+      limit(1)
+    );
+
+    const unsubscribe = onSnapshot(
+      levelEventsQuery,
+      (snapshot) => {
+        if (snapshot.empty) return;
+
+        const eventDoc = snapshot.docs[0];
+        if (levelUpEvent?.id === eventDoc.id) return;
+
+        const data = eventDoc.data() || {};
+        const parsedLevel = Number((data as any)?.payload?.level || 0);
+
+        if (Number.isFinite(parsedLevel) && parsedLevel > 0) {
+          setLevelUpEvent({
+            id: eventDoc.id,
+            level: parsedLevel,
+          });
+        }
+      },
+      (error) => {
+        console.error('[AppNavigator] Level event listener error:', error);
+      }
+    );
+
+    return unsubscribe;
+  }, [appState, levelUpEvent?.id, user?.uid]);
+
+  const handleLevelUpOverlayFinished = useCallback(async () => {
+    const uid = user?.uid;
+    const eventId = levelUpEvent?.id;
+
+    if (!uid || !eventId) {
+      setLevelUpEvent(null);
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, 'users', uid, 'events', eventId), {
+        seen: true,
+        seenAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error('[AppNavigator] Failed to mark level-up event as seen:', error);
+    }
+
+    setLevelUpEvent(null);
+  }, [levelUpEvent?.id, user?.uid]);
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -433,15 +511,23 @@ export default function AppNavigator() {
   }
 
   return (
-    <RootStack.Navigator screenOptions={{ headerShown: false }}>
-      {appState === 'auth' ? (
-        <RootStack.Screen name="Auth" component={AuthNavigator} />
-      ) : appState === 'main' ? (
-        <RootStack.Screen name="Main" component={MainNavigator} />
-      ) : (
-        <RootStack.Screen name="Onboarding" component={OnboardingNavigator} />
-      )}
-    </RootStack.Navigator>
+    <>
+      <RootStack.Navigator screenOptions={{ headerShown: false }}>
+        {appState === 'auth' ? (
+          <RootStack.Screen name="Auth" component={AuthNavigator} />
+        ) : appState === 'main' ? (
+          <RootStack.Screen name="Main" component={MainNavigator} />
+        ) : (
+          <RootStack.Screen name="Onboarding" component={OnboardingNavigator} />
+        )}
+      </RootStack.Navigator>
+
+      <LevelUpCelebrationOverlay
+        visible={Boolean(levelUpEvent)}
+        level={levelUpEvent?.level || 0}
+        onFinished={handleLevelUpOverlayFinished}
+      />
+    </>
   );
 }
 
@@ -494,5 +580,42 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
     paddingHorizontal: 32,
+  },
+  levelUpOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(9, 9, 11, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 200,
+  },
+  levelUpCard: {
+    width: '82%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: '#E94560',
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  levelUpEyebrow: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#E94560',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  levelUpTitle: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#09090B',
+    marginBottom: 8,
+  },
+  levelUpSubtitle: {
+    fontSize: 14,
+    color: '#71717A',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft } from 'phosphor-react-native';
-import { serverTimestamp, Timestamp, doc, setDoc, updateDoc, increment } from '@react-native-firebase/firestore';
+import { serverTimestamp, Timestamp, doc, setDoc } from '@react-native-firebase/firestore';
 import { auth, db } from '../../services/firebase';
 import { useRunStore } from '../../stores/useRunStore';
 import { useUserStore } from '../../stores/useUserStore';
@@ -18,7 +18,14 @@ interface TaskFeedback {
   targetKm: number;
   achievedKm: number;
   progressPct: number;
+  taskDistanceQualified: boolean;
+  taskPaceQualified: boolean;
+  targetPaceMinPerKm: number | null;
+  achievedPaceMinPerKm: number | null;
 }
+
+const TASK_COMPLETION_DISTANCE_EPSILON_KM = 0.005;
+const TASK_COMPLETION_PACE_EPSILON_MIN_PER_KM = 0.02;
 
 const format24HourTime = (millis: number): string => {
   return new Date(millis).toLocaleTimeString('en-GB', {
@@ -40,11 +47,25 @@ const buildTaskFeedback = (
   taskId: string,
   taskTitle: string,
   targetKm: number,
-  achievedKm: number
+  targetMinutes: number,
+  achievedKm: number,
+  durationSeconds: number
 ): TaskFeedback => {
   const safeTargetKm = Number.isFinite(targetKm) ? Math.max(0, targetKm) : 0;
+  const safeTargetMinutes = Number.isFinite(targetMinutes) ? Math.max(0, targetMinutes) : 0;
   const safeAchievedKm = Number.isFinite(achievedKm) ? Math.max(0, achievedKm) : 0;
   const isFreeRun = !taskId || taskId === 'free_run' || safeTargetKm <= 0;
+  const achievedMinutes = Math.max(0, durationSeconds / 60);
+  const hasPaceGoal = safeTargetKm > 0 && safeTargetMinutes > 0;
+
+  const taskDistanceQualified = safeAchievedKm + TASK_COMPLETION_DISTANCE_EPSILON_KM >= safeTargetKm;
+  const targetPaceMinPerKm = hasPaceGoal ? safeTargetMinutes / safeTargetKm : null;
+  const achievedPaceMinPerKm = safeAchievedKm > 0 ? achievedMinutes / safeAchievedKm : null;
+  const taskPaceQualified = !hasPaceGoal || Boolean(
+    achievedPaceMinPerKm !== null
+      && targetPaceMinPerKm !== null
+      && achievedPaceMinPerKm <= targetPaceMinPerKm + TASK_COMPLETION_PACE_EPSILON_MIN_PER_KM
+  );
 
   if (isFreeRun) {
     return {
@@ -54,10 +75,14 @@ const buildTaskFeedback = (
       targetKm: safeTargetKm,
       achievedKm: safeAchievedKm,
       progressPct: 100,
+      taskDistanceQualified: true,
+      taskPaceQualified: true,
+      targetPaceMinPerKm,
+      achievedPaceMinPerKm,
     };
   }
 
-  const taskCompleted = safeAchievedKm >= safeTargetKm;
+  const taskCompleted = taskDistanceQualified && taskPaceQualified;
   const progressPct = safeTargetKm > 0
     ? Math.min(100, Math.round((safeAchievedKm / safeTargetKm) * 100))
     : 0;
@@ -70,16 +95,28 @@ const buildTaskFeedback = (
       targetKm: safeTargetKm,
       achievedKm: safeAchievedKm,
       progressPct,
+      taskDistanceQualified,
+      taskPaceQualified,
+      targetPaceMinPerKm,
+      achievedPaceMinPerKm,
     };
   }
+
+  const failureMessage = !taskDistanceQualified
+    ? 'Target distance not reached. Keep showing up and you will hit it next run.'
+    : 'Distance target reached, but pace was slower than required for this task.';
 
   return {
     taskResult: 'failed',
     taskCompleted: false,
-    motivationMessage: 'Not this time, but you still showed up. Recover well and attack the next run.',
+    motivationMessage: failureMessage,
     targetKm: safeTargetKm,
     achievedKm: safeAchievedKm,
     progressPct,
+    taskDistanceQualified,
+    taskPaceQualified,
+    targetPaceMinPerKm,
+    achievedPaceMinPerKm,
   };
 };
 
@@ -127,7 +164,9 @@ const PostRunSummaryScreen: React.FC<PostRunSummaryScreenProps> = ({ navigation 
       lastSessionData.taskId || '',
       lastSessionData.taskTitle || 'Task',
       Number(lastSessionData.targetKm || 0),
-      distanceKm
+      Number(lastSessionData.targetMinutes || 0),
+      distanceKm,
+      durationSeconds
     );
 
     return {
@@ -224,23 +263,13 @@ const PostRunSummaryScreen: React.FC<PostRunSummaryScreenProps> = ({ navigation 
           taskCompleted: feedback.taskCompleted,
           motivationMessage: feedback.motivationMessage,
           taskProgressPct: feedback.progressPct,
+          taskDistanceQualified: feedback.taskDistanceQualified,
+          taskPaceQualified: feedback.taskPaceQualified,
+          taskTargetPaceMinPerKm: feedback.targetPaceMinPerKm,
+          taskAchievedPaceMinPerKm: feedback.achievedPaceMinPerKm,
           processedAt: null,
           flagReason: null,
         });
-
-        // Update user stats
-        const userRef = doc(db, 'users', uid);
-        await updateDoc(userRef, {
-          runCount: increment(1),
-          totalKm: increment(distanceKm),
-        });
-
-        // Update Zustand stores
-        useUserStore.getState().setUser({
-          uid,
-          displayName: storedName,
-          totalKm: (useUserStore.getState().totalKm || 0) + distanceKm,
-        } as any);
 
         setIsRunPersisted(true);
         setSaveNotice('Run saved successfully. It is now available in Recent Runs.');
@@ -366,7 +395,7 @@ const PostRunSummaryScreen: React.FC<PostRunSummaryScreenProps> = ({ navigation 
           <Text style={styles.taskMessage}>{feedback.motivationMessage}</Text>
         </View>
 
-        {!!saveNotice ? (
+        {saveNotice ? (
           <View style={[styles.saveNoticeCard, isRunPersisted ? styles.saveNoticeSuccess : styles.saveNoticeWarning]}>
             <Text style={styles.saveNoticeText}>{saveNotice}</Text>
           </View>

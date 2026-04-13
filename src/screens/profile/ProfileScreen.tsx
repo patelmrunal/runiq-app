@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
+  FlatList,
   ActivityIndicator,
   Image,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SignOut } from 'phosphor-react-native';
@@ -28,6 +29,8 @@ interface RunItem {
   createdAt: any;
   startTime: any;
   endTime: any;
+  status: string;
+  flagReason: string | null;
   distance: number;
   duration: number;
   avgPace: number;
@@ -47,6 +50,14 @@ interface DerivedRunOutcome {
   color: string;
   progressPct: number;
   message: string;
+}
+
+interface ComputedRunItem extends RunItem {
+  runDate: string;
+  startTime24: string;
+  endTime24: string;
+  durationText: string;
+  outcome: DerivedRunOutcome;
 }
 
 const toMillis = (value: unknown): number | null => {
@@ -84,7 +95,69 @@ const format24Hour = (value: unknown): string => {
   });
 };
 
+const getFlagReviewDetails = (flagReason: string | null) => {
+  const reason = typeof flagReason === 'string' ? flagReason : '';
+
+  if (reason === 'sparse_gps') {
+    return {
+      label: 'GPS review needed',
+      message: 'GPS trace was sparse in this run, so progression updates were not fully applied.',
+      code: 'sparse_gps',
+    };
+  }
+
+  if (reason === 'impossible_pace') {
+    return {
+      label: 'Pace review needed',
+      message: 'Recorded pace was faster than human running range, so this run is under review.',
+      code: 'impossible_pace',
+    };
+  }
+
+  if (reason === 'invalid_run_payload') {
+    return {
+      label: 'Run data incomplete',
+      message: 'Run payload was incomplete, so this run is under review.',
+      code: 'invalid_run_payload',
+    };
+  }
+
+  return {
+    label: 'Review needed',
+    message: 'This run is under review due to data quality checks.',
+    code: reason || 'unknown',
+  };
+};
+
 const deriveRunOutcome = (run: RunItem): DerivedRunOutcome => {
+  const status = typeof run.status === 'string' ? run.status.toLowerCase() : 'pending';
+
+  if (status === 'flagged') {
+    const details = getFlagReviewDetails(run.flagReason);
+
+    return {
+      hasTaskGoal: Boolean(run.taskId && run.taskId !== 'free_run' && run.taskTargetKm > 0),
+      completed: false,
+      result: 'failed',
+      label: details.label,
+      color: '#D97706',
+      progressPct: Math.max(0, Math.min(100, Number(run.taskProgressPct || 0))),
+      message: details.message,
+    };
+  }
+
+  if (status !== 'valid') {
+    return {
+      hasTaskGoal: Boolean(run.taskId && run.taskId !== 'free_run' && run.taskTargetKm > 0),
+      completed: false,
+      result: 'failed',
+      label: 'Processing',
+      color: '#2563EB',
+      progressPct: Math.max(0, Math.min(100, Number(run.taskProgressPct || 0))),
+      message: 'Run is being processed. Stats and streak will update shortly.',
+    };
+  }
+
   const targetKm = Number.isFinite(run.taskTargetKm) ? Math.max(0, run.taskTargetKm) : 0;
   const hasTaskGoal = Boolean(run.taskId && run.taskId !== 'free_run' && targetKm > 0);
 
@@ -100,8 +173,13 @@ const deriveRunOutcome = (run: RunItem): DerivedRunOutcome => {
     };
   }
 
-  const completed = run.distance + TASK_COMPLETION_EPSILON_KM >= targetKm;
-  const progressPct = Math.min(100, Math.round((run.distance / targetKm) * 100));
+  const hasBackendResult = run.taskResult === 'completed' || run.taskResult === 'failed';
+  const completed = hasBackendResult
+    ? run.taskResult === 'completed'
+    : run.distance + TASK_COMPLETION_EPSILON_KM >= targetKm;
+  const progressPct = Number.isFinite(run.taskProgressPct) && run.taskProgressPct > 0
+    ? Math.min(100, Math.max(0, Math.round(run.taskProgressPct)))
+    : Math.min(100, Math.round((run.distance / targetKm) * 100));
 
   return {
     hasTaskGoal: true,
@@ -126,6 +204,8 @@ export default function ProfileScreen({ navigation }: Props) {
     dnaType,
     tier,
     totalKm,
+    totalRuns,
+    shieldsAvailable,
     currentStreak,
     longestStreak,
   } = useUserStore();
@@ -160,7 +240,7 @@ export default function ProfileScreen({ navigation }: Props) {
             homeCity: data?.homeCity || '',
             homeTimezone: data?.homeTimezone || '',
             restDay: data?.restDay || 0,
-            totalRuns: data?.totalRuns || 0,
+            totalRuns: data?.runCount ?? data?.totalRuns ?? 0,
           });
         }
         setLoading(false);
@@ -196,6 +276,8 @@ export default function ProfileScreen({ navigation }: Props) {
             createdAt: data.createdAt,
             startTime: data.startTime,
             endTime: data.endTime,
+            status: typeof data.status === 'string' ? data.status : 'pending',
+            flagReason: typeof data.flagReason === 'string' ? data.flagReason : null,
             distance: data.distance || 0,
             duration: data.duration || 0,
             avgPace: data.avgPace || 0,
@@ -225,6 +307,170 @@ export default function ProfileScreen({ navigation }: Props) {
     }
   }
 
+  const computedRuns = useMemo<ComputedRunItem[]>(() => {
+    return recentRuns.map((run) => {
+      const runDate = formatRunDate(run.startTime || run.createdAt);
+      const startTime24 = format24Hour(run.startTime);
+      const endTime24 = format24Hour(run.endTime);
+      const outcome = deriveRunOutcome(run);
+
+      const durationMin = Math.floor(run.duration / 60);
+      const durationSec = run.duration % 60;
+
+      return {
+        ...run,
+        runDate,
+        startTime24,
+        endTime24,
+        outcome,
+        durationText: `${String(durationMin).padStart(2, '0')}:${String(durationSec).padStart(2, '0')}`,
+      };
+    });
+  }, [recentRuns]);
+
+  const renderRunItem = ({ item }: { item: ComputedRunItem }) => {
+    const { outcome } = item;
+    const isFlagged = typeof item.status === 'string' && item.status.toLowerCase() === 'flagged';
+
+    return (
+      <View style={styles.runItemContainer}>
+        <TouchableOpacity
+          style={styles.runCard}
+          activeOpacity={0.85}
+          onPress={() => {
+            const parentNav = navigation.getParent();
+            if (parentNav) {
+              (parentNav as any).navigate('RunDetail', { runId: item.runId });
+            }
+          }}
+        >
+          <View style={styles.runHeader}>
+            <Text style={styles.runDate}>{item.runDate}</Text>
+            <Text style={styles.runDistance}>{item.distance.toFixed(1)} km</Text>
+          </View>
+          <View style={styles.runFooter}>
+            <Text style={styles.runDuration}>{item.durationText}</Text>
+            <Text style={styles.runPace}>{item.avgPace.toFixed(2)} min/km</Text>
+          </View>
+          <Text style={styles.runTimeRange}>{item.startTime24} - {item.endTime24} (24h)</Text>
+          <View style={styles.runStatusRow}>
+            <View style={[styles.runStatusBadge, { backgroundColor: `${outcome.color}20` }]}> 
+              <Text style={[styles.runStatusText, { color: outcome.color }]}>{outcome.label}</Text>
+            </View>
+            {outcome.hasTaskGoal ? (
+              <Text style={styles.progressText}>{item.distance.toFixed(2)} / {item.taskTargetKm.toFixed(2)} km ({outcome.progressPct}%)</Text>
+            ) : null}
+          </View>
+          {outcome.message ? (
+            <Text numberOfLines={2} style={styles.runLogText}>{outcome.message}</Text>
+          ) : null}
+          {isFlagged ? (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={(event) => {
+                (event as any)?.stopPropagation?.();
+                const details = getFlagReviewDetails(item.flagReason);
+                Alert.alert(
+                  'Run Review Details',
+                  `Reason code: ${details.code}\n\n${details.message}`
+                );
+              }}
+              style={styles.reviewInfoButton}
+            >
+              <Text style={styles.reviewInfoButtonText}>What happened?</Text>
+            </TouchableOpacity>
+          ) : null}
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const listHeader = (
+    <>
+      {/* Header with logout */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Profile</Text>
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={handleLogout}
+          activeOpacity={0.7}
+        >
+          <SignOut size={24} color="#71717A" weight="regular" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Avatar section */}
+      <View style={styles.avatarSection}>
+        <View style={styles.avatarRing}>
+          {photoURL ? (
+            <Image source={{ uri: photoURL }} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarPlaceholderText}>
+                {(displayName || username || 'U')[0].toUpperCase()}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Name and tier badge */}
+        <View style={styles.nameRow}>
+          <Text style={styles.displayName}>{displayName || 'Runner'}</Text>
+          <View style={[styles.tierBadge, tier === 'premium' && styles.tierBadgePremium]}>
+            <Text style={[styles.tierText, tier === 'premium' && styles.tierTextPremium]}>
+              {tier === 'premium' ? 'Premium' : 'Basic'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Username */}
+        <Text style={styles.username}>@{username || 'runner'}</Text>
+
+        {/* DNA type */}
+        <Text style={styles.dnaType}>
+          DNA Type: {dnaType || 'Still Discovering'}
+        </Text>
+      </View>
+
+      {/* Stats row */}
+      <View style={styles.statsRow}>
+        <View style={styles.statCard}>
+          <Text style={styles.statValue}>{totalKm.toFixed(1)}</Text>
+          <Text style={styles.statLabel}>Total KM</Text>
+        </View>
+
+        <View style={styles.statCard}>
+          <Text style={styles.statValue}>{totalRuns}</Text>
+          <Text style={styles.statLabel}>Total Runs</Text>
+        </View>
+
+        <View style={styles.statCard}>
+          <View style={styles.statValueRow}>
+            <Text style={styles.flameEmoji}>🔥</Text>
+            <Text style={styles.statValue}>{currentStreak}</Text>
+          </View>
+          <Text style={styles.statLabel}>Streak</Text>
+        </View>
+      </View>
+
+      {/* Additional info section */}
+      <View style={styles.section}>
+        <View style={styles.infoCard}>
+          <Text style={styles.infoLabel}>Longest Streak</Text>
+          <Text style={styles.infoValue}>{longestStreak} days</Text>
+        </View>
+        <View style={styles.infoCard}>
+          <Text style={styles.infoLabel}>Shields Available</Text>
+          <Text style={styles.infoValue}>{shieldsAvailable}</Text>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Recent Runs</Text>
+      </View>
+    </>
+  );
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -235,146 +481,27 @@ export default function ProfileScreen({ navigation }: Props) {
     );
   }
 
-  const totalRuns = useUserStore.getState().totalRuns || 0;
-
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header with logout */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Profile</Text>
-          <TouchableOpacity
-            style={styles.logoutButton}
-            onPress={handleLogout}
-            activeOpacity={0.7}
-          >
-            <SignOut size={24} color="#71717A" weight="regular" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Avatar section */}
-        <View style={styles.avatarSection}>
-          <View style={styles.avatarRing}>
-            {photoURL ? (
-              <Image source={{ uri: photoURL }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarPlaceholderText}>
-                  {(displayName || username || 'U')[0].toUpperCase()}
-                </Text>
-              </View>
-            )}
-          </View>
-
-          {/* Name and tier badge */}
-          <View style={styles.nameRow}>
-            <Text style={styles.displayName}>{displayName || 'Runner'}</Text>
-            <View style={[styles.tierBadge, tier === 'premium' && styles.tierBadgePremium]}>
-              <Text style={[styles.tierText, tier === 'premium' && styles.tierTextPremium]}>
-                {tier === 'premium' ? 'Premium' : 'Basic'}
-              </Text>
-            </View>
-          </View>
-
-          {/* Username */}
-          <Text style={styles.username}>@{username || 'runner'}</Text>
-
-          {/* DNA type */}
-          <Text style={styles.dnaType}>
-            DNA Type: {dnaType || 'Still Discovering'}
-          </Text>
-        </View>
-
-        {/* Stats row */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{totalKm.toFixed(1)}</Text>
-            <Text style={styles.statLabel}>Total KM</Text>
-          </View>
-
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{totalRuns}</Text>
-            <Text style={styles.statLabel}>Total Runs</Text>
-          </View>
-
-          <View style={styles.statCard}>
-            <View style={styles.statValueRow}>
-              <Text style={styles.flameEmoji}>🔥</Text>
-              <Text style={styles.statValue}>{currentStreak}</Text>
-            </View>
-            <Text style={styles.statLabel}>Streak</Text>
-          </View>
-        </View>
-
-        {/* Additional info section */}
-        <View style={styles.section}>
-          <View style={styles.infoCard}>
-            <Text style={styles.infoLabel}>Longest Streak</Text>
-            <Text style={styles.infoValue}>{longestStreak} days</Text>
-          </View>
-        </View>
-
-        {/* Recent Runs section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Runs</Text>
-          {recentRuns.length === 0 ? (
+      <FlatList
+        data={computedRuns}
+        keyExtractor={(item) => item.runId}
+        renderItem={renderRunItem}
+        ListHeaderComponent={listHeader}
+        ListEmptyComponent={
+          <View style={styles.section}>
             <View style={styles.emptyRuns}>
               <Text style={styles.emptyRunsText}>No runs yet. Start your first run!</Text>
             </View>
-          ) : (
-            recentRuns.map((run) => {
-              const runDate = formatRunDate(run.startTime || run.createdAt);
-              const startTime24 = format24Hour(run.startTime);
-              const endTime24 = format24Hour(run.endTime);
-              const outcome = deriveRunOutcome(run);
-
-              const durationMin = Math.floor(run.duration / 60);
-              const durationSec = run.duration % 60;
-
-              return (
-                <TouchableOpacity
-                  key={run.runId}
-                  style={styles.runCard}
-                  activeOpacity={0.85}
-                  onPress={() => {
-                    const parentNav = navigation.getParent();
-                    if (parentNav) {
-                      (parentNav as any).navigate('RunDetail', { runId: run.runId });
-                    }
-                  }}
-                >
-                  <View style={styles.runHeader}>
-                    <Text style={styles.runDate}>{runDate}</Text>
-                    <Text style={styles.runDistance}>{run.distance.toFixed(1)} km</Text>
-                  </View>
-                  <View style={styles.runFooter}>
-                    <Text style={styles.runDuration}>
-                      {String(durationMin).padStart(2, '0')}:{String(durationSec).padStart(2, '0')}
-                    </Text>
-                    <Text style={styles.runPace}>{run.avgPace.toFixed(2)} min/km</Text>
-                  </View>
-                  <Text style={styles.runTimeRange}>{startTime24} - {endTime24} (24h)</Text>
-                  <View style={styles.runStatusRow}>
-                    <View style={[styles.runStatusBadge, { backgroundColor: `${outcome.color}20` }]}> 
-                      <Text style={[styles.runStatusText, { color: outcome.color }]}>{outcome.label}</Text>
-                    </View>
-                    {outcome.hasTaskGoal ? (
-                      <Text style={styles.progressText}>{run.distance.toFixed(2)} / {run.taskTargetKm.toFixed(2)} km ({outcome.progressPct}%)</Text>
-                    ) : null}
-                  </View>
-                  {!!outcome.message ? (
-                    <Text numberOfLines={2} style={styles.runLogText}>{outcome.message}</Text>
-                  ) : null}
-                </TouchableOpacity>
-              );
-            })
-          )}
-        </View>
-      </ScrollView>
+          </View>
+        }
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        removeClippedSubviews
+        initialNumToRender={5}
+        windowSize={7}
+      />
     </SafeAreaView>
   );
 }
@@ -556,6 +683,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 4,
+    marginBottom: SPACING.sm,
   },
   infoLabel: {
     fontFamily: 'Inter',
@@ -584,6 +712,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8F8F8',
     borderRadius: 16,
     padding: SPACING.md,
+  },
+  runItemContainer: {
+    paddingHorizontal: SPACING.lg,
     marginBottom: SPACING.sm,
   },
   runHeader: {
@@ -652,5 +783,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.mediumGrey,
     lineHeight: 18,
+  },
+  reviewInfoButton: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#EFEFEF',
+  },
+  reviewInfoButtonText: {
+    fontFamily: 'Inter',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#444444',
   },
 });

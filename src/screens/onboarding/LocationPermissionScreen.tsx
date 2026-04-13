@@ -9,6 +9,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { OnboardingScreenProps } from '../../navigation';
 import { Colors, Typography, Spacing, BorderRadius } from '../../constants';
 import { requestLocationPermissions } from '../../services/locationService';
+import {
+  BACKGROUND_LOCATION_DISCLOSURE_MESSAGE,
+  BACKGROUND_LOCATION_DISCLOSURE_TITLE,
+} from '../../constants/legal';
 
 type Props = OnboardingScreenProps<'LocationPermission'>;
 
@@ -38,9 +42,14 @@ export default function LocationPermissionScreen({ navigation }: Props) {
     <SafeAreaView style={styles.container}>
       {/* Main content */}
       <View style={styles.content}>
-        <Text style={styles.heading}>
-          Runiq uses GPS to track your runs and show you local leaderboards
-        </Text>
+        <Text style={styles.heading}>{BACKGROUND_LOCATION_DISCLOSURE_TITLE}</Text>
+        <Text style={styles.body}>{BACKGROUND_LOCATION_DISCLOSURE_MESSAGE}</Text>
+        <View style={styles.noteCard}>
+          <Text style={styles.noteHeading}>Why we ask</Text>
+          <Text style={styles.noteText}>- Accurate distance and pace during your run</Text>
+          <Text style={styles.noteText}>- Route continuity if the screen turns off</Text>
+          <Text style={styles.noteText}>- Consistent run validation and streak scoring</Text>
+        </View>
       </View>
 
       {/* Footer CTAs */}
@@ -51,7 +60,7 @@ export default function LocationPermissionScreen({ navigation }: Props) {
           activeOpacity={0.85}
           disabled={isRequesting}
         >
-          <Text style={styles.primaryButtonText}>Allow Location</Text>
+          <Text style={styles.primaryButtonText}>Continue and Allow Location</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -84,6 +93,32 @@ const styles = StyleSheet.create({
     color: Colors.PRIMARY_TEXT,
     marginBottom: Spacing.md,
     lineHeight: 34,
+  },
+  body: {
+    fontFamily: Typography.fontFamily,
+    ...Typography.body,
+    color: Colors.SECONDARY_TEXT,
+    lineHeight: 22,
+    marginBottom: Spacing.lg,
+  },
+  noteCard: {
+    backgroundColor: '#F4F4F5',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    gap: Spacing.xs,
+  },
+  noteHeading: {
+    fontFamily: Typography.fontFamily,
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.PRIMARY_TEXT,
+    marginBottom: Spacing.xs,
+  },
+  noteText: {
+    fontFamily: Typography.fontFamily,
+    fontSize: 13,
+    lineHeight: 19,
+    color: Colors.SECONDARY_TEXT,
   },
   footer: {
     paddingBottom: Spacing.xl,

@@ -29,7 +29,7 @@ export default function DashboardScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [tasksLoading, setTasksLoading] = useState(true);
   const [tasks, setTasks] = useState<RunTask[]>([]);
-  const { displayName, currentStreak, level } = useUserStore();
+  const { displayName, currentStreak, level, shieldsAvailable, homeTimezone, tier } = useUserStore();
 
   useEffect(() => {
     const uid = auth.currentUser?.uid;
@@ -82,11 +82,15 @@ export default function DashboardScreen({ navigation }: Props) {
       },
       () => {
         setTasksLoading(false);
+      },
+      {
+        homeTimezone,
+        maxDailyTasks: tier === 'premium' ? 4 : 3,
       }
     );
 
     return unsubscribe;
-  }, []);
+  }, [homeTimezone, tier]);
 
   // Calculate greeting based on time
   function getGreeting() {
@@ -134,8 +138,13 @@ export default function DashboardScreen({ navigation }: Props) {
           </View>
 
           {/* Level badge */}
-          <View style={styles.levelBadge}>
-            <Text style={styles.levelBadgeText}>Level {level}</Text>
+          <View style={styles.statusRow}>
+            <View style={styles.levelBadge}>
+              <Text style={styles.levelBadgeText}>Level {level}</Text>
+            </View>
+            <View style={styles.shieldBadge}>
+              <Text style={styles.shieldBadgeText}>Shields {shieldsAvailable}</Text>
+            </View>
           </View>
         </LinearGradient>
 
@@ -151,8 +160,8 @@ export default function DashboardScreen({ navigation }: Props) {
 
           {!tasksLoading && tasks.length === 0 ? (
             <View style={styles.emptyTaskCard}>
-              <Text style={styles.emptyTaskTitle}>No active tasks available</Text>
-              <Text style={styles.emptyTaskSubtitle}>Please add active tasks in Firestore</Text>
+              <Text style={styles.emptyTaskTitle}>Tasks are being prepared</Text>
+              <Text style={styles.emptyTaskSubtitle}>Your daily tasks will appear shortly.</Text>
             </View>
           ) : null}
 
@@ -272,9 +281,25 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 16,
     paddingVertical: 8,
-    alignSelf: 'flex-start',
   },
   levelBadgeText: {
+    fontFamily: 'Inter',
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  shieldBadge: {
+    backgroundColor: 'rgba(9, 9, 11, 0.28)',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  shieldBadgeText: {
     fontFamily: 'Inter',
     fontSize: 13,
     fontWeight: '700',

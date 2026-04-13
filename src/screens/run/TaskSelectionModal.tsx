@@ -64,8 +64,8 @@ const TaskSelectionModal: React.FC<TaskSelectionModalProps> = ({
 
             {!loading && tasks.length === 0 ? (
               <View style={styles.emptyCard}>
-                <Text style={styles.emptyTitle}>No active tasks found</Text>
-                <Text style={styles.emptySubtitle}>Add active tasks in Firestore collection auto</Text>
+                <Text style={styles.emptyTitle}>No daily tasks yet</Text>
+                <Text style={styles.emptySubtitle}>Please wait a moment while your daily tasks sync.</Text>
               </View>
             ) : null}
 

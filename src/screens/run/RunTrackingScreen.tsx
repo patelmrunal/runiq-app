@@ -5,11 +5,19 @@ import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import BackgroundService from 'react-native-background-actions';
 import { COLORS, Typography, Spacing, BorderRadius } from '../../constants/theme';
 import { startTracking, stopTracking, pauseTracking, resumeTracking, calculatePace, type RunSession } from '../../services/runTrackingService';
-import { requestBatteryOptimizationExemption, requestLocationPermissions } from '../../services/locationService';
+import {
+  areLocationPermissionsGranted,
+  requestBatteryOptimizationExemption,
+  requestLocationPermissions,
+} from '../../services/locationService';
 import { getCurrentLocation, watchLocation, clearLocationWatch } from '../../services/gpsService';
 import { haversineDistance } from '../../utils/haversine';
 import { useRunStore } from '../../stores/useRunStore';
 import type { MainScreenProps } from '../../navigation';
+import {
+  BACKGROUND_LOCATION_DISCLOSURE_MESSAGE,
+  BACKGROUND_LOCATION_DISCLOSURE_TITLE,
+} from '../../constants/legal';
 
 type RunTrackingScreenProps = MainScreenProps<'RunTracking'>;
 
@@ -265,16 +273,61 @@ const RunTrackingScreen: React.FC<RunTrackingScreenProps> = ({ navigation, route
   // Check permission after app shell renders
   useEffect(() => {
     const timer = setTimeout(() => {
-      checkAndRequestPermission();
+      checkPermissionState();
     }, 0);
 
     return () => clearTimeout(timer);
   }, []);
 
+  const checkPermissionState = async () => {
+    try {
+      if (Platform.OS !== 'android') {
+        setPermissionStatus('granted');
+        return;
+      }
+
+      const granted = await areLocationPermissionsGranted();
+      setPermissionStatus(granted ? 'granted' : 'denied');
+    } catch (error) {
+      console.error('Permission status check error:', error);
+      setPermissionStatus('denied');
+    }
+  };
+
+  const showBackgroundDisclosureConfirm = () => {
+    return new Promise<boolean>((resolve) => {
+      Alert.alert(
+        BACKGROUND_LOCATION_DISCLOSURE_TITLE,
+        BACKGROUND_LOCATION_DISCLOSURE_MESSAGE,
+        [
+          {
+            text: 'Not now',
+            style: 'cancel',
+            onPress: () => resolve(false),
+          },
+          {
+            text: 'Continue',
+            onPress: () => resolve(true),
+          },
+        ],
+        {
+          cancelable: true,
+          onDismiss: () => resolve(false),
+        }
+      );
+    });
+  };
+
   const checkAndRequestPermission = async () => {
     try {
       if (Platform.OS !== 'android') {
         setPermissionStatus('granted');
+        return;
+      }
+
+      const confirmed = await showBackgroundDisclosureConfirm();
+      if (!confirmed) {
+        setPermissionStatus('denied');
         return;
       }
 
@@ -309,11 +362,10 @@ const RunTrackingScreen: React.FC<RunTrackingScreenProps> = ({ navigation, route
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      // Always cleanup when screen unmounts
+      // Only clear warmup watcher on unmount.
+      // Active run tracking is stopped explicitly from handleStop.
       try {
         clearWarmupWatch();
-        stopTracking();
-        BackgroundService.stop();
       } catch {
         // ignore cleanup errors
       }
@@ -408,7 +460,11 @@ const RunTrackingScreen: React.FC<RunTrackingScreenProps> = ({ navigation, route
       await startTracking(onSessionUpdate);
     } catch (e) {
       console.error('GPS tracking start error:', e);
-      Alert.alert('GPS Error', 'Could not start GPS tracking');
+      const rawMessage = (e as any)?.message;
+      const message = typeof rawMessage === 'string' && rawMessage.trim().length > 0
+        ? rawMessage
+        : 'Could not start GPS tracking.';
+      Alert.alert('Run Start Failed', message);
       throw e; // Re-throw to prevent running state
     }
 
@@ -469,7 +525,11 @@ const RunTrackingScreen: React.FC<RunTrackingScreenProps> = ({ navigation, route
           setIsStartingRun(false);
         } catch (error) {
           console.error('18. GPS tracking error:', error);
-          Alert.alert('GPS Error', 'Could not access GPS. Please check location settings.');
+          const rawMessage = (error as any)?.message;
+          const message = typeof rawMessage === 'string' && rawMessage.trim().length > 0
+            ? rawMessage
+            : 'Could not access GPS. Please check location settings.';
+          Alert.alert('Run Start Failed', message);
           setCountdown(3); // Reset countdown
           setIsStartingRun(false);
         }
@@ -591,7 +651,10 @@ const RunTrackingScreen: React.FC<RunTrackingScreenProps> = ({ navigation, route
           <Text style={styles.permissionIcon}>📍</Text>
           <Text style={styles.permissionTitle}>Location Required</Text>
           <Text style={styles.permissionText}>
-            Runiq needs GPS access to track your run
+            Runiq collects precise location data during an active run, including when the app is closed or your screen is off, so your distance and route remain accurate.
+          </Text>
+          <Text style={styles.permissionTextMuted}>
+            Background location is used only while a run is active.
           </Text>
           <TouchableOpacity
             style={styles.permissionButton}
@@ -770,6 +833,13 @@ const styles = StyleSheet.create({
   permissionText: {
     fontSize: 16,
     color: COLORS.mediumGrey,
+    fontFamily: Typography.fontFamily,
+    textAlign: 'center',
+    marginBottom: Spacing.sm,
+  },
+  permissionTextMuted: {
+    fontSize: 13,
+    color: COLORS.lightGrey,
     fontFamily: Typography.fontFamily,
     textAlign: 'center',
     marginBottom: Spacing.xl,
