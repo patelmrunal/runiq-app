@@ -10,14 +10,15 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   limit,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
   updateDoc,
   where,
 } from '@react-native-firebase/firestore';
+import type { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -77,6 +78,39 @@ const ScreenFallback = ({ label = 'Loading...' }: { label?: string }) => (
     <Text style={styles.loadingSubtitle}>{label}</Text>
   </View>
 );
+
+type LevelUpEventSelection = {
+  id: string;
+  level: number;
+  createdAtMs: number;
+};
+
+const pickLatestUnseenLevelUpEvent = (
+  docs: FirebaseFirestoreTypes.QueryDocumentSnapshot<FirebaseFirestoreTypes.DocumentData>[]
+): LevelUpEventSelection | null => {
+  const selected = docs
+    .map((docSnap): LevelUpEventSelection | null => {
+      const data = docSnap.data() || {};
+      const createdAtMs = typeof (data as any)?.createdAt?.toDate === 'function'
+        ? (data as any).createdAt.toDate().getTime()
+        : 0;
+      const level = Number((data as any)?.payload?.level || 0);
+
+      if ((data as any)?.type !== 'level_up') return null;
+      if ((data as any)?.seen === true) return null;
+      if (!Number.isFinite(level) || level <= 0) return null;
+
+      return {
+        id: docSnap.id,
+        level,
+        createdAtMs,
+      };
+    })
+    .filter((item): item is LevelUpEventSelection => Boolean(item))
+    .sort((a, b) => b.createdAtMs - a.createdAtMs)[0];
+
+  return selected || null;
+};
 
 type LevelUpCelebrationOverlayProps = {
   visible: boolean;
@@ -434,10 +468,8 @@ export default function AppNavigator() {
 
     const levelEventsQuery = query(
       collection(db, 'users', user.uid, 'events'),
-      where('type', '==', 'level_up'),
       where('seen', '==', false),
-      orderBy('createdAt', 'desc'),
-      limit(1)
+      limit(25)
     );
 
     const unsubscribe = onSnapshot(
@@ -445,18 +477,15 @@ export default function AppNavigator() {
       (snapshot) => {
         if (snapshot.empty) return;
 
-        const eventDoc = snapshot.docs[0];
-        if (levelUpEvent?.id === eventDoc.id) return;
+        const nextLevelEvent = pickLatestUnseenLevelUpEvent(snapshot.docs);
 
-        const data = eventDoc.data() || {};
-        const parsedLevel = Number((data as any)?.payload?.level || 0);
+        if (!nextLevelEvent) return;
+        if (levelUpEvent?.id === nextLevelEvent.id) return;
 
-        if (Number.isFinite(parsedLevel) && parsedLevel > 0) {
-          setLevelUpEvent({
-            id: eventDoc.id,
-            level: parsedLevel,
-          });
-        }
+        setLevelUpEvent({
+          id: nextLevelEvent.id,
+          level: nextLevelEvent.level,
+        });
       },
       (error) => {
         console.error('[AppNavigator] Level event listener error:', error);
@@ -464,6 +493,47 @@ export default function AppNavigator() {
     );
 
     return unsubscribe;
+  }, [appState, levelUpEvent?.id, user?.uid]);
+
+  // Fallback poll: protects level-up UI when realtime event stream is delayed.
+  useEffect(() => {
+    if (!user?.uid || appState !== 'main') return;
+
+    let cancelled = false;
+
+    const pollLatestLevelUpEvent = async () => {
+      try {
+        const snapshot = await getDocs(
+          query(
+            collection(db, 'users', user.uid, 'events'),
+            limit(25)
+          )
+        );
+
+        if (cancelled || snapshot.empty) return;
+
+        const nextLevelEvent = pickLatestUnseenLevelUpEvent(snapshot.docs);
+        if (!nextLevelEvent) return;
+        if (levelUpEvent?.id === nextLevelEvent.id) return;
+
+        setLevelUpEvent({
+          id: nextLevelEvent.id,
+          level: nextLevelEvent.level,
+        });
+      } catch (error) {
+        console.error('[AppNavigator] Level event poll error:', error);
+      }
+    };
+
+    void pollLatestLevelUpEvent();
+    const timer = setInterval(() => {
+      void pollLatestLevelUpEvent();
+    }, 15000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
   }, [appState, levelUpEvent?.id, user?.uid]);
 
   const handleLevelUpOverlayFinished = useCallback(async () => {

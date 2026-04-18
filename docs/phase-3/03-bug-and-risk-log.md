@@ -131,6 +131,14 @@
 - Planned Fix: Add automatic watch recovery on error + watchdog-based stall detection with bounded restart attempts, periodic one-shot background GPS probe fallback, exclusive watch lock during active runs, and mandatory retried Android foreground service startup.
 - Status: Resolved on 2026-04-12.
 
+### RISK-017: Level-up event exists but overlay not shown
+- Severity: Medium
+- Area: src/navigation/AppNavigator.tsx level-up listener query
+- Detail: Level-up event docs could remain unseen (`seen=false`) while UI overlay never appeared because listener used a compound query path that may fail before composite index readiness.
+- Impact: Users see level updated in profile/dashboard but miss level-up celebration UI.
+- Planned Fix: Use index-safe unseen-events query and select latest `level_up` event client-side, then mark event seen after overlay dismissal; add polling fallback if realtime stream is delayed.
+- Status: Resolved on 2026-04-16.
+
 ## Wave 3 Verification Evidence (2026-04-09)
 - Emulator matrix summary: 10 passed, 0 failed, 0 skipped.
 - Validated scenarios: streak increment, same-day idempotency, shield consume, no-shield reset, 10 PM and 11:30 PM reminders, level-up event emission, daily task generation count, replay safety, timezone correctness.

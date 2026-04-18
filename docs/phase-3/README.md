@@ -68,3 +68,10 @@ Phase 3 is complete only when:
 - Implemented: More tab now contains in-app Privacy Policy entry point and Location Data Disclosure helper card.
 - Implemented: canonical legal constants added for disclosure message and policy URL (`https://runiq-dev.web.app/privacy-policy`).
 - Implemented: Data Safety final answer pack created in file 09 for direct Play Console entry.
+- 2026-04-16: Level-up celebration UI reliability fix applied.
+- Root cause: level-up listener query depended on a composite index path (`type` + `seen` + `createdAt desc`) and could fail silently when index was not ready, leaving `events` docs with `seen=false` and no overlay.
+- Implemented: AppNavigator now listens to unseen events via an index-safe query (`seen=false`), then filters/sorts client-side to pick the newest `level_up` event.
+- Result: existing unseen level_up events can now render overlay and be marked seen=true after dismissal.
+- 2026-04-16: Additional hardening added after field validation.
+- Implemented: polling fallback added in AppNavigator to periodically scan latest events and trigger unseen `level_up` overlay even if realtime event stream is delayed/interrupted.
+- Result: level-up UI no longer depends solely on one realtime listener path.

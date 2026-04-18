@@ -2,6 +2,8 @@
 
 Only unresolved items from Phase 3 are listed below.
 
+This file remains a carry-over tracker. Active Phase 4 planning and execution now lives in the full Phase 4 context pack files in this folder.
+
 ## Backend
 - Tune scheduler batching strategy if user count grows (current implementation scans active users).
 
