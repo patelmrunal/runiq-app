@@ -1,14 +1,7 @@
 import { create } from 'zustand';
+import type { RunnerDnaType } from '../utils/dna';
 
-type DnaType =
-  | 'early_bird'
-  | 'night_owl'
-  | 'speed_demon'
-  | 'steady_pacer'
-  | 'weekend_warrior'
-  | 'streak_machine'
-  | 'comeback_king'
-  | null;
+type DnaType = RunnerDnaType | null;
 
 interface UserState {
   uid: string;

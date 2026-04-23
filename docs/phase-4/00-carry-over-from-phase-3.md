@@ -4,6 +4,11 @@ Only unresolved items from Phase 3 are listed below.
 
 This file remains a carry-over tracker. Active Phase 4 planning and execution now lives in the full Phase 4 context pack files in this folder.
 
+## Update 2026-04-23
+- Carry-over items in this file were transferred to Phase 5 handoff:
+	- docs/phase-5/00-carry-over-from-phase-4.md
+- This Phase 4 file is kept as the historical source snapshot.
+
 ## Backend
 - Tune scheduler batching strategy if user count grows (current implementation scans active users).
 

@@ -22,7 +22,7 @@ export interface UserDocument {
     lat: number;
     lng: number;
   };
-  dnaType: string;
+  dnaType: string | null;
   dnaHistory: string[];
   runCount: number;
   totalKm: number;
@@ -75,7 +75,7 @@ export async function createUserDocument(
       homeState: '',
       homeTimezone: 'Asia/Kolkata',
       homeCoords: { lat: 0, lng: 0 },
-      dnaType: 'discovering',
+      dnaType: null,
       dnaHistory: [],
       runCount: 0,
       totalKm: 0,

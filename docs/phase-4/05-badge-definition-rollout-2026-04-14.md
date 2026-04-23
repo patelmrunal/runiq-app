@@ -63,3 +63,20 @@ Recommended milestone examples:
 - [ ] Matrix tests passed in dev.
 - [ ] Production apply completed.
 - [ ] Version and changelog updated.
+
+## Update 2026-04-18
+- Added rollout script: functions/scripts/sync_phase4_badges.js
+- Added npm commands:
+	- npm run badges:catalog:dry
+	- npm run badges:catalog:apply
+- Dry-run executed successfully with output:
+	- project=runiq-dev
+	- badgeCount=11
+	- milestoneCount=4
+- Apply execution:
+	- First attempt failed due missing default credentials.
+	- Apply succeeded after setting GOOGLE_APPLICATION_CREDENTIALS explicitly.
+	- Final apply output:
+		- [phase4-badges] Apply complete
+		- project=runiq-dev
+		- badgeCount=11

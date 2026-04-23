@@ -10,6 +10,8 @@
     "tasks:catalog:dry": "node scripts/sync_phase3_templates.js --project=runiq-dev",
     "tasks:catalog:apply": "node scripts/sync_phase3_templates.js --project=runiq-dev --apply",
     "tasks:catalog:apply:deactivate": "node scripts/sync_phase3_templates.js --project=runiq-dev --apply --deactivate-missing",
+    "badges:catalog:dry": "node scripts/sync_phase4_badges.js --project=runiq-dev",
+    "badges:catalog:apply": "node scripts/sync_phase4_badges.js --project=runiq-dev --apply",
     "backfill:sparse-gps:dry": "node scripts/backfill_sparse_gps_runs.js --project=runiq-dev",
     "backfill:sparse-gps:apply": "node scripts/backfill_sparse_gps_runs.js --project=runiq-dev --apply"
   },

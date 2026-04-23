@@ -35,4 +35,13 @@ Phase 4 is complete only when:
 ## Latest Update
 - 2026-04-14: Phase 4 documentation pack created.
 - Scope locked: Badges + Runner DNA only (logic reference from PRD/TRD, implementation aligned to current app codebase).
-- Next action: implement backend badges/DNA pipeline and event-driven UI overlays, then execute matrix validation.
+- 2026-04-18: Phase 4 backend and app implementation pass completed.
+- Implemented: server-side badge evaluation, DNA calculation on each 10th run, badge and DNA event emission, celebration overlay support, prominent profile DNA card, and badge catalog rollout script/tooling.
+- Verification: backend and modified app files pass editor error checks; Cloud Functions syntax check passed; Phase 4 badge catalog dry-run and apply executed successfully in runiq-dev.
+- 2026-04-19: onRunLogCreated deployed to runiq-dev and automated matrix executed via functions/scripts/phase4_matrix.js.
+- Matrix result: T401-T415 PASS (15/15), FAIL 0.
+- 2026-04-19: Trophy and badge visibility extension completed in app UI.
+- Implemented: Profile Trophy Room badge shelf, real BadgeDetail modal screen, and Profile-to-BadgeDetail navigation wiring.
+- 2026-04-23: manual phone validation completed by user with screenshot evidence.
+- Manual confirmation: Runner DNA card and Trophy Room badge shelf render correctly on device.
+- Next action: start Phase 5 execution while completing formal engineering/product/documentation signoffs in parallel.

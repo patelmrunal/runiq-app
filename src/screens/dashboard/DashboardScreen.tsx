@@ -16,6 +16,7 @@ import { subscribeToRunTasks, type RunTask } from '../../services/taskService';
 import { useUserStore } from '../../stores/useUserStore';
 import type { TabScreenProps } from '../../navigation';
 import { COLORS, SPACING } from '../../constants/theme';
+import { normalizeDnaType } from '../../utils/dna';
 
 type Props = TabScreenProps<'Dashboard'>;
 
@@ -56,7 +57,7 @@ export default function DashboardScreen({ navigation }: Props) {
             currentStreak: data?.currentStreak || 0,
             longestStreak: data?.longestStreak || 0,
             shieldsAvailable: data?.shieldsAvailable || 0,
-            dnaType: data?.dnaType || null,
+            dnaType: normalizeDnaType(data?.dnaType),
             totalKm: data?.totalKm || 0,
             homeCity: data?.homeCity || '',
             homeTimezone: data?.homeTimezone || '',

@@ -46,8 +46,65 @@ For each test case capture:
 7. Matrix case id result
 
 ## Done-When Proof Checklist
-- [ ] User reached runCount 10
-- [ ] DNA assigned from backend logic
-- [ ] Profile displays assigned DNA
-- [ ] Event flow and overlay behavior verified
-- [ ] Test evidence attached to matrix and summary docs
+- [x] User reached runCount 10
+- [x] DNA assigned from backend logic
+- [x] Profile displays assigned DNA (render path verified in profile screen and matrix T414/T415)
+- [x] Event flow and overlay behavior verified (overlay logic + seen-state verified in matrix T413)
+- [x] Test evidence attached to matrix and summary docs
+
+## Status Update (2026-04-18)
+- Backend DNA logic and app DNA display/event flow are implemented.
+- Proof run execution is still pending.
+- Next operator action: run seeded 10-run scenario and capture evidence in this file and in 04-emulator-test-matrix.md.
+
+## Execution Evidence (2026-04-19)
+
+### Commands Executed
+1. firebase deploy --only functions:onRunLogCreated --project runiq-dev
+2. node functions/scripts/phase4_matrix.js
+
+### Automated Proof Data
+1. Matrix summary
+	- passCount: 15
+	- failCount: 0
+	- total: 15
+2. Required done-when path
+	- Case: T415
+	- Backend result: dnaType assigned on 10th-run path (speed_demon)
+	- Profile path: dedicated Runner DNA card render path verified
+3. DNA evolution copy
+	- Case: T412
+	- Event message: "Your Runner DNA has evolved!"
+4. Additional critical checks
+	- T408: 30-run window enforced (night_owl winner from latest window)
+	- T409: comeback_king priority override verified
+	- T410/T411: no-winner retention and history append-on-change-only verified
+
+### Test User and Data Notes
+- Matrix runner created isolated temporary users for each scenario and cleaned them up after completion.
+- Seed patterns included:
+	- 9->10 hard-run transition for speed_demon assignment
+	- >30-run mixed profile for windowing
+	- streakHistory with reset + quick returns for comeback_king override
+	- no-winner retention dataset for unchanged DNA verification
+
+### Evidence Location
+- Detailed per-case evidence: docs/phase-4/04-emulator-test-matrix.md
+- Session status and closure notes: docs/phase-4/00-session-summary-2026-04-14.md
+
+## Manual Phone Evidence (2026-04-23)
+
+### Source
+- User-provided real-device screenshots captured after Phase 4 rollout updates.
+
+### Observations from screenshots
+- Profile screen:
+	- Runner DNA card visible with Night Owl label and explanatory blurb.
+	- Core stats and profile layout remain intact.
+- Trophy Room:
+	- Latest badges visible (including milestone styling on First Run).
+	- Badge cards rendered with category emoji/label and earned date.
+
+### Proof impact
+- Reinforces T414 and T415 evidence with real-device UI confirmation (beyond static and automated verification).
+- Confirms Phase 4 badge/DNA surfaces are visible and stable in manual usage flow.

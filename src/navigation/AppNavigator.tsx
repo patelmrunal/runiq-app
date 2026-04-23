@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -25,6 +25,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from '
 import { auth, db } from '../services/firebase';
 import { createUserDocument } from '../services/userService';
 import { startNotificationTokenSync } from '../services/notificationService';
+import { formatDnaLabel } from '../utils/dna';
 import LoginScreen from '../screens/auth/LoginScreen';
 import RegisterScreen from '../screens/auth/RegisterScreen';
 import SplashScreen from '../screens/SplashScreen';
@@ -58,6 +59,11 @@ const PostRunSummaryScreen = React.lazy(() =>
 const RunDetailScreen = React.lazy(() =>
   import('../screens/run').then((module) => ({ default: module.RunDetailScreen }))
 );
+
+const BadgeDetailScreen = React.lazy(() =>
+  import('../screens/badges').then((module) => ({ default: module.BadgeDetailScreen }))
+);
+
 const RunHubScreen = React.lazy(() =>
   import('../screens/run').then((module) => ({ default: module.RunHubScreen }))
 );
@@ -79,48 +85,158 @@ const ScreenFallback = ({ label = 'Loading...' }: { label?: string }) => (
   </View>
 );
 
-type LevelUpEventSelection = {
+type CelebrationType = 'level_up' | 'badge_unlocked' | 'dna_evolved';
+
+type CelebrationEvent = {
   id: string;
-  level: number;
+  type: CelebrationType;
   createdAtMs: number;
+  payload: Record<string, unknown>;
 };
 
-const pickLatestUnseenLevelUpEvent = (
+type CelebrationSelection = {
+  selected: CelebrationEvent | null;
+  autoSeenIds: string[];
+};
+
+const getCreatedAtMs = (data: Record<string, unknown>): number => {
+  const createdAt = (data as any)?.createdAt;
+  if (typeof createdAt?.toDate === 'function') {
+    return createdAt.toDate().getTime();
+  }
+  return 0;
+};
+
+const pickCelebrationEvent = (
   docs: FirebaseFirestoreTypes.QueryDocumentSnapshot<FirebaseFirestoreTypes.DocumentData>[]
-): LevelUpEventSelection | null => {
-  const selected = docs
-    .map((docSnap): LevelUpEventSelection | null => {
-      const data = docSnap.data() || {};
-      const createdAtMs = typeof (data as any)?.createdAt?.toDate === 'function'
-        ? (data as any).createdAt.toDate().getTime()
-        : 0;
-      const level = Number((data as any)?.payload?.level || 0);
+): CelebrationSelection => {
+  const autoSeenIds: string[] = [];
 
-      if ((data as any)?.type !== 'level_up') return null;
-      if ((data as any)?.seen === true) return null;
-      if (!Number.isFinite(level) || level <= 0) return null;
-
+  const sorted = docs
+    .map((docSnap) => {
+      const data = (docSnap.data() || {}) as Record<string, unknown>;
       return {
         id: docSnap.id,
-        level,
-        createdAtMs,
+        data,
+        createdAtMs: getCreatedAtMs(data),
       };
     })
-    .filter((item): item is LevelUpEventSelection => Boolean(item))
-    .sort((a, b) => b.createdAtMs - a.createdAtMs)[0];
+    .sort((a, b) => b.createdAtMs - a.createdAtMs);
 
-  return selected || null;
+  for (const entry of sorted) {
+    const type = typeof entry.data.type === 'string' ? entry.data.type : '';
+    const seen = entry.data.seen === true;
+    const payload = typeof entry.data.payload === 'object' && entry.data.payload ? entry.data.payload as Record<string, unknown> : {};
+
+    if (seen) continue;
+    if (type !== 'level_up' && type !== 'badge_unlocked' && type !== 'dna_evolved') continue;
+
+    if (type === 'level_up') {
+      const level = Number(payload.level || 0);
+      if (!Number.isFinite(level) || level <= 0) {
+        autoSeenIds.push(entry.id);
+        continue;
+      }
+
+      return {
+        selected: {
+          id: entry.id,
+          type: 'level_up',
+          createdAtMs: entry.createdAtMs,
+          payload,
+        },
+        autoSeenIds,
+      };
+    }
+
+    if (type === 'badge_unlocked') {
+      const milestone = payload.milestone === true;
+      if (!milestone) {
+        autoSeenIds.push(entry.id);
+        continue;
+      }
+
+      return {
+        selected: {
+          id: entry.id,
+          type: 'badge_unlocked',
+          createdAtMs: entry.createdAtMs,
+          payload,
+        },
+        autoSeenIds,
+      };
+    }
+
+    return {
+      selected: {
+        id: entry.id,
+        type: 'dna_evolved',
+        createdAtMs: entry.createdAtMs,
+        payload,
+      },
+      autoSeenIds,
+    };
+  }
+
+  return {selected: null, autoSeenIds};
 };
 
-type LevelUpCelebrationOverlayProps = {
-  visible: boolean;
-  level: number;
+const getCelebrationCopy = (event: CelebrationEvent | null) => {
+  if (!event) {
+    return {
+      accentColor: '#E94560',
+      eyebrow: '',
+      title: '',
+      subtitle: '',
+    };
+  }
+
+  if (event.type === 'level_up') {
+    const level = Number(event.payload.level || 0);
+    return {
+      accentColor: '#E94560',
+      eyebrow: 'Level Up',
+      title: `Level ${level}`,
+      subtitle: 'New features are now unlocked. Keep your streak alive.',
+    };
+  }
+
+  if (event.type === 'badge_unlocked') {
+    const badgeName = typeof event.payload.badgeName === 'string' && event.payload.badgeName
+      ? event.payload.badgeName
+      : 'Milestone Badge';
+
+    return {
+      accentColor: '#0F3460',
+      eyebrow: 'Badge Unlocked',
+      title: badgeName,
+      subtitle: 'Milestone achieved. Your running story just got stronger.',
+    };
+  }
+
+  const dnaLabel = formatDnaLabel(event.payload.dnaType);
+  const dnaMessage = typeof event.payload.message === 'string' && event.payload.message
+    ? event.payload.message
+    : 'Your Runner DNA has evolved!';
+
+  return {
+    accentColor: '#E94560',
+    eyebrow: 'Runner DNA',
+    title: dnaLabel,
+    subtitle: dnaMessage,
+  };
+};
+
+type CelebrationOverlayProps = {
+  event: CelebrationEvent | null;
   onFinished: () => void;
 };
 
-function LevelUpCelebrationOverlay({ visible, level, onFinished }: LevelUpCelebrationOverlayProps) {
+function CelebrationOverlay({ event, onFinished }: CelebrationOverlayProps) {
+  const visible = Boolean(event);
   const overlayOpacity = useSharedValue(0);
   const cardScale = useSharedValue(0.9);
+  const copy = getCelebrationCopy(event);
 
   useEffect(() => {
     if (!visible) {
@@ -164,10 +280,10 @@ function LevelUpCelebrationOverlay({ visible, level, onFinished }: LevelUpCelebr
 
   return (
     <Animated.View pointerEvents="none" style={[styles.levelUpOverlay, overlayStyle]}>
-      <Animated.View style={[styles.levelUpCard, cardStyle]}>
-        <Text style={styles.levelUpEyebrow}>Level Up</Text>
-        <Text style={styles.levelUpTitle}>Level {level}</Text>
-        <Text style={styles.levelUpSubtitle}>New features are now unlocked. Keep your streak alive.</Text>
+      <Animated.View style={[styles.levelUpCard, { borderColor: copy.accentColor }, cardStyle]}>
+        <Text style={[styles.levelUpEyebrow, { color: copy.accentColor }]}>{copy.eyebrow}</Text>
+        <Text style={styles.levelUpTitle}>{copy.title}</Text>
+        <Text style={styles.levelUpSubtitle}>{copy.subtitle}</Text>
       </Animated.View>
     </Animated.View>
   );
@@ -344,7 +460,7 @@ function MainNavigator() {
         />
         <MainStack.Screen
           name="BadgeDetail"
-          component={PlaceholderScreen}
+          component={BadgeDetailScreen}
           options={{ presentation: 'modal' }}
         />
         <MainStack.Screen
@@ -369,7 +485,8 @@ export default function AppNavigator() {
   const [appState, setAppState] = useState<'auth' | 'onboarding' | 'main'>('auth');
   const [loading, setLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(true);
-  const [levelUpEvent, setLevelUpEvent] = useState<{ id: string; level: number } | null>(null);
+  const [activeCelebration, setActiveCelebration] = useState<CelebrationEvent | null>(null);
+  const autoSeenInFlightRef = useRef<Set<string>>(new Set());
 
   // Monitor network connectivity
   useEffect(() => {
@@ -462,40 +579,64 @@ export default function AppNavigator() {
     return startNotificationTokenSync(user.uid);
   }, [user?.uid]);
 
-  // Listen for new level-up events and show celebration overlay once.
+  const markEventsSeen = useCallback(async (uid: string, eventIds: string[]) => {
+    const unique = Array.from(new Set(eventIds)).filter((eventId) => {
+      if (!eventId) return false;
+      if (autoSeenInFlightRef.current.has(eventId)) return false;
+      autoSeenInFlightRef.current.add(eventId);
+      return true;
+    });
+
+    if (unique.length === 0) return;
+
+    await Promise.all(unique.map(async (eventId) => {
+      try {
+        await updateDoc(doc(db, 'users', uid, 'events', eventId), {
+          seen: true,
+          seenAt: serverTimestamp(),
+        });
+      } catch (error) {
+        console.error('[AppNavigator] Failed to mark event as seen:', error);
+      } finally {
+        autoSeenInFlightRef.current.delete(eventId);
+      }
+    }));
+  }, []);
+
+  // Listen for unseen celebration events and show the latest display-worthy one.
   useEffect(() => {
     if (!user?.uid || appState !== 'main') return;
 
-    const levelEventsQuery = query(
+    const celebrationEventsQuery = query(
       collection(db, 'users', user.uid, 'events'),
       where('seen', '==', false),
       limit(25)
     );
 
     const unsubscribe = onSnapshot(
-      levelEventsQuery,
+      celebrationEventsQuery,
       (snapshot) => {
         if (snapshot.empty) return;
 
-        const nextLevelEvent = pickLatestUnseenLevelUpEvent(snapshot.docs);
+        const selection = pickCelebrationEvent(snapshot.docs);
+        if (selection.autoSeenIds.length > 0) {
+          void markEventsSeen(user.uid, selection.autoSeenIds);
+        }
 
-        if (!nextLevelEvent) return;
-        if (levelUpEvent?.id === nextLevelEvent.id) return;
+        if (!selection.selected) return;
+        if (activeCelebration?.id === selection.selected.id) return;
 
-        setLevelUpEvent({
-          id: nextLevelEvent.id,
-          level: nextLevelEvent.level,
-        });
+        setActiveCelebration(selection.selected);
       },
       (error) => {
-        console.error('[AppNavigator] Level event listener error:', error);
+        console.error('[AppNavigator] Celebration event listener error:', error);
       }
     );
 
     return unsubscribe;
-  }, [appState, levelUpEvent?.id, user?.uid]);
+  }, [activeCelebration?.id, appState, markEventsSeen, user?.uid]);
 
-  // Fallback poll: protects level-up UI when realtime event stream is delayed.
+  // Fallback poll: protects celebration UI when realtime event stream is delayed.
   useEffect(() => {
     if (!user?.uid || appState !== 'main') return;
 
@@ -506,22 +647,24 @@ export default function AppNavigator() {
         const snapshot = await getDocs(
           query(
             collection(db, 'users', user.uid, 'events'),
+            where('seen', '==', false),
             limit(25)
           )
         );
 
         if (cancelled || snapshot.empty) return;
 
-        const nextLevelEvent = pickLatestUnseenLevelUpEvent(snapshot.docs);
-        if (!nextLevelEvent) return;
-        if (levelUpEvent?.id === nextLevelEvent.id) return;
+        const selection = pickCelebrationEvent(snapshot.docs);
+        if (selection.autoSeenIds.length > 0) {
+          await markEventsSeen(user.uid, selection.autoSeenIds);
+        }
 
-        setLevelUpEvent({
-          id: nextLevelEvent.id,
-          level: nextLevelEvent.level,
-        });
+        if (!selection.selected) return;
+        if (activeCelebration?.id === selection.selected.id) return;
+
+        setActiveCelebration(selection.selected);
       } catch (error) {
-        console.error('[AppNavigator] Level event poll error:', error);
+        console.error('[AppNavigator] Celebration event poll error:', error);
       }
     };
 
@@ -534,28 +677,21 @@ export default function AppNavigator() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [appState, levelUpEvent?.id, user?.uid]);
+  }, [activeCelebration?.id, appState, markEventsSeen, user?.uid]);
 
-  const handleLevelUpOverlayFinished = useCallback(async () => {
+  const handleCelebrationOverlayFinished = useCallback(async () => {
     const uid = user?.uid;
-    const eventId = levelUpEvent?.id;
+    const eventId = activeCelebration?.id;
 
     if (!uid || !eventId) {
-      setLevelUpEvent(null);
+      setActiveCelebration(null);
       return;
     }
 
-    try {
-      await updateDoc(doc(db, 'users', uid, 'events', eventId), {
-        seen: true,
-        seenAt: serverTimestamp(),
-      });
-    } catch (error) {
-      console.error('[AppNavigator] Failed to mark level-up event as seen:', error);
-    }
+    await markEventsSeen(uid, [eventId]);
 
-    setLevelUpEvent(null);
-  }, [levelUpEvent?.id, user?.uid]);
+    setActiveCelebration(null);
+  }, [activeCelebration?.id, markEventsSeen, user?.uid]);
 
   if (loading) {
     return (
@@ -592,10 +728,9 @@ export default function AppNavigator() {
         )}
       </RootStack.Navigator>
 
-      <LevelUpCelebrationOverlay
-        visible={Boolean(levelUpEvent)}
-        level={levelUpEvent?.level || 0}
-        onFinished={handleLevelUpOverlayFinished}
+      <CelebrationOverlay
+        event={activeCelebration}
+        onFinished={handleCelebrationOverlayFinished}
       />
     </>
   );

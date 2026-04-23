@@ -25,12 +25,12 @@ Deploy and verify backend logic for:
 - Optional full deploy if additional functions are added.
 
 ## Smoke Checklist (Dev)
-- [ ] Valid run still processes as valid status.
-- [ ] At least one badge can be awarded from baseline conditions.
-- [ ] Badge replay does not duplicate writes.
-- [ ] DNA does not run before run 10.
-- [ ] DNA runs at run 10 and updates user dnaType correctly.
-- [ ] dna_evolved event appears only when DNA changes.
+- [x] Valid run still processes as valid status.
+- [x] At least one badge can be awarded from baseline conditions.
+- [x] Badge replay does not duplicate writes.
+- [x] DNA does not run before run 10.
+- [x] DNA runs at run 10 and updates user dnaType correctly.
+- [x] dna_evolved event appears only when DNA changes.
 
 ## Rollback Plan
 If regression is detected:
@@ -43,3 +43,29 @@ If regression is detected:
 - User doc before/after snapshots for run 10 scenario.
 - Badge and event subcollection snapshots for idempotency check.
 - Matrix pass summary line.
+
+## Update 2026-04-18 (Implementation and Pre-Smoke)
+- Backend implementation completed in functions/index.js:
+  - evaluateBadgesForRun
+  - calculateDnaForUser
+  - onRunLogCreated Phase 4 orchestration hook
+- Syntax validation completed:
+  - node --check index.js passed
+- Tooling validation completed:
+  - npm run badges:catalog:dry passed
+- Catalog apply executed successfully in runiq-dev with explicit ADC credentials.
+- Function deployment not executed in this session.
+- Remaining rollout tasks:
+  - completed on 2026-04-19 (deploy + smoke + matrix).
+
+## Update 2026-04-19 (Rollout Verification Complete)
+- Deployment command:
+  - firebase deploy --only functions:onRunLogCreated --project runiq-dev
+- Deployment result:
+  - Successful update operation for onRunLogCreated (asia-south1).
+- Verification command:
+  - node functions/scripts/phase4_matrix.js
+- Verification result:
+  - PASS 15/15, FAIL 0.
+- Outcome:
+  - Phase 4 backend rollout and smoke criteria satisfied for dev project.

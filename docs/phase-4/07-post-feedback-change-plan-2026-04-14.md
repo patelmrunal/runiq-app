@@ -44,3 +44,6 @@ This plan captures expected feedback loops after baseline Phase 4 rollout and de
 ## Status
 - Planned only.
 - Activate this plan after first full Phase 4 baseline pass.
+- Baseline implementation completed on 2026-04-18.
+- Matrix baseline signoff criteria completed on 2026-04-19 (T401-T415 PASS).
+- Next activation point: first production feedback cycle.

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { logout } from '../../services/firebase/auth';
 import { useUserStore } from '../../stores/useUserStore';
 import type { TabScreenProps } from '../../navigation';
 import { COLORS, SPACING } from '../../constants/theme';
+import { formatDnaLabel, getDnaMeta, normalizeDnaType } from '../../utils/dna';
 
 type Props = TabScreenProps<'Profile'>;
 type TaskResult = 'completed' | 'failed' | 'free_run';
@@ -41,6 +42,25 @@ interface RunItem {
   taskTargetKm: number;
   taskProgressPct: number;
 }
+
+interface BadgeItem {
+  badgeId: string;
+  name: string;
+  description: string;
+  category: string;
+  milestone: boolean;
+  earnedAt: unknown;
+}
+
+const BADGE_CATEGORY_META: Record<string, { label: string; emoji: string }> = {
+  distance: { label: 'Distance', emoji: '📏' },
+  streak: { label: 'Streak', emoji: '🔥' },
+  time_of_day: { label: 'Time', emoji: '🕒' },
+  weather: { label: 'Weather', emoji: '🌧️' },
+  behaviour: { label: 'Behaviour', emoji: '⚡' },
+  seasonal: { label: 'Seasonal', emoji: '🎉' },
+  mission: { label: 'Mission', emoji: '🧭' },
+};
 
 interface DerivedRunOutcome {
   hasTaskGoal: boolean;
@@ -92,6 +112,17 @@ const format24Hour = (value: unknown): string => {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
+  });
+};
+
+const formatBadgeDate = (value: unknown): string => {
+  const millis = toMillis(value);
+  if (!millis) return 'Recently unlocked';
+
+  return new Date(millis).toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
   });
 };
 
@@ -197,6 +228,7 @@ const deriveRunOutcome = (run: RunItem): DerivedRunOutcome => {
 export default function ProfileScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [recentRuns, setRecentRuns] = useState<RunItem[]>([]);
+  const [recentBadges, setRecentBadges] = useState<BadgeItem[]>([]);
   const {
     username,
     displayName,
@@ -235,7 +267,7 @@ export default function ProfileScreen({ navigation }: Props) {
             currentStreak: data?.currentStreak || 0,
             longestStreak: data?.longestStreak || 0,
             shieldsAvailable: data?.shieldsAvailable || 0,
-            dnaType: data?.dnaType || null,
+            dnaType: normalizeDnaType(data?.dnaType),
             totalKm: data?.totalKm || 0,
             homeCity: data?.homeCity || '',
             homeTimezone: data?.homeTimezone || '',
@@ -299,6 +331,48 @@ export default function ProfileScreen({ navigation }: Props) {
     return () => unsubscribe();
   }, []);
 
+  // Load recent badges for trophy section
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    const badgesQuery = query(
+      collection(db, `users/${uid}/badges`),
+      orderBy('earnedAt', 'desc'),
+      limit(6)
+    );
+
+    const unsubscribe = onSnapshot(
+      badgesQuery,
+      (snapshot) => {
+        const badges: BadgeItem[] = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data() || {};
+          return {
+            badgeId: typeof data.badgeId === 'string' && data.badgeId ? data.badgeId : docSnap.id,
+            name: typeof data.name === 'string' && data.name ? data.name : docSnap.id,
+            description: typeof data.description === 'string' ? data.description : 'Badge unlocked from your running consistency.',
+            category: typeof data.category === 'string' && data.category ? data.category : 'distance',
+            milestone: data.milestone === true,
+            earnedAt: data.earnedAt,
+          };
+        });
+
+        setRecentBadges(badges);
+      },
+      (error) => {
+        console.error('[Profile] Error loading badges:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  const openMainRoute = useCallback((routeName: 'RunDetail' | 'BadgeDetail', params: Record<string, unknown>) => {
+    const parentNav = navigation.getParent();
+    if (!parentNav) return;
+    (parentNav as any).navigate(routeName, params);
+  }, [navigation]);
+
   async function handleLogout() {
     try {
       await logout();
@@ -328,6 +402,8 @@ export default function ProfileScreen({ navigation }: Props) {
     });
   }, [recentRuns]);
 
+  const dnaMeta = useMemo(() => getDnaMeta(dnaType), [dnaType]);
+
   const renderRunItem = ({ item }: { item: ComputedRunItem }) => {
     const { outcome } = item;
     const isFlagged = typeof item.status === 'string' && item.status.toLowerCase() === 'flagged';
@@ -337,12 +413,7 @@ export default function ProfileScreen({ navigation }: Props) {
         <TouchableOpacity
           style={styles.runCard}
           activeOpacity={0.85}
-          onPress={() => {
-            const parentNav = navigation.getParent();
-            if (parentNav) {
-              (parentNav as any).navigate('RunDetail', { runId: item.runId });
-            }
-          }}
+          onPress={() => openMainRoute('RunDetail', { runId: item.runId })}
         >
           <View style={styles.runHeader}>
             <Text style={styles.runDate}>{item.runDate}</Text>
@@ -426,10 +497,16 @@ export default function ProfileScreen({ navigation }: Props) {
         {/* Username */}
         <Text style={styles.username}>@{username || 'runner'}</Text>
 
-        {/* DNA type */}
-        <Text style={styles.dnaType}>
-          DNA Type: {dnaType || 'Still Discovering'}
-        </Text>
+        <View style={styles.dnaCard}>
+          <View style={styles.dnaHeaderRow}>
+            <Text style={styles.dnaEyebrow}>Runner DNA</Text>
+            <Text style={styles.dnaEmoji}>{dnaMeta?.emoji || '🧬'}</Text>
+          </View>
+          <Text style={styles.dnaTitle}>{formatDnaLabel(dnaType)}</Text>
+          <Text style={styles.dnaBlurb}>
+            {dnaMeta?.blurb || 'Keep running to discover your running identity.'}
+          </Text>
+        </View>
       </View>
 
       {/* Stats row */}
@@ -463,6 +540,42 @@ export default function ProfileScreen({ navigation }: Props) {
           <Text style={styles.infoLabel}>Shields Available</Text>
           <Text style={styles.infoValue}>{shieldsAvailable}</Text>
         </View>
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Trophy Room</Text>
+          <Text style={styles.sectionCaption}>Latest badges</Text>
+        </View>
+
+        {recentBadges.length === 0 ? (
+          <View style={styles.emptyBadgesCard}>
+            <Text style={styles.emptyBadgesTitle}>No badges yet</Text>
+            <Text style={styles.emptyBadgesText}>Finish runs to start collecting your badge story.</Text>
+          </View>
+        ) : (
+          <View style={styles.badgeGrid}>
+            {recentBadges.map((badge) => {
+              const meta = BADGE_CATEGORY_META[badge.category] || { label: badge.category, emoji: '🏅' };
+              return (
+                <TouchableOpacity
+                  key={badge.badgeId}
+                  activeOpacity={0.82}
+                  style={[styles.badgeCard, badge.milestone && styles.badgeCardMilestone]}
+                  onPress={() => openMainRoute('BadgeDetail', { badgeId: badge.badgeId })}
+                >
+                  <View style={styles.badgeTopRow}>
+                    <Text style={styles.badgeEmoji}>{meta.emoji}</Text>
+                    {badge.milestone ? <Text style={styles.badgeMilestonePill}>Milestone</Text> : null}
+                  </View>
+                  <Text numberOfLines={1} style={styles.badgeName}>{badge.name}</Text>
+                  <Text numberOfLines={1} style={styles.badgeCategory}>{meta.label}</Text>
+                  <Text style={styles.badgeDate}>{formatBadgeDate(badge.earnedAt)}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
       </View>
 
       <View style={styles.section}>
@@ -612,10 +725,46 @@ const styles = StyleSheet.create({
   tierTextPremium: {
     color: '#E94560',
   },
-  dnaType: {
+  dnaCard: {
+    width: '100%',
+    marginTop: SPACING.md,
+    backgroundColor: '#F8F8F8',
+    borderRadius: 20,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderWidth: 1,
+    borderColor: '#E4E4E7',
+  },
+  dnaHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  dnaEyebrow: {
+    fontFamily: 'Inter',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#E94560',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  dnaEmoji: {
+    fontSize: 18,
+  },
+  dnaTitle: {
+    fontFamily: 'Inter',
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.almostBlack,
+    marginTop: 2,
+    marginBottom: 4,
+  },
+  dnaBlurb: {
     fontFamily: 'Inter',
     fontSize: 13,
     color: COLORS.mediumGrey,
+    lineHeight: 19,
   },
 
   // Stats row
@@ -670,6 +819,94 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.almostBlack,
     marginBottom: SPACING.md,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  sectionCaption: {
+    fontFamily: 'Inter',
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.mediumGrey,
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+  badgeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  badgeCard: {
+    width: '48.7%',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E4E4E7',
+    backgroundColor: '#F8F8F8',
+    padding: SPACING.sm,
+  },
+  badgeCardMilestone: {
+    borderColor: '#F59E0B',
+    backgroundColor: '#FFFBEB',
+  },
+  badgeTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  badgeEmoji: {
+    fontSize: 20,
+  },
+  badgeMilestonePill: {
+    fontFamily: 'Inter',
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#B45309',
+    backgroundColor: '#FFEDD5',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    overflow: 'hidden',
+  },
+  badgeName: {
+    fontFamily: 'Inter',
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.almostBlack,
+  },
+  badgeCategory: {
+    marginTop: 2,
+    fontFamily: 'Inter',
+    fontSize: 11,
+    color: COLORS.mediumGrey,
+  },
+  badgeDate: {
+    marginTop: 6,
+    fontFamily: 'Inter',
+    fontSize: 11,
+    color: COLORS.lightGrey,
+  },
+  emptyBadgesCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E4E4E7',
+    backgroundColor: '#FAFAFA',
+    padding: SPACING.md,
+  },
+  emptyBadgesTitle: {
+    fontFamily: 'Inter',
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.almostBlack,
+  },
+  emptyBadgesText: {
+    marginTop: 6,
+    fontFamily: 'Inter',
+    fontSize: 13,
+    color: COLORS.mediumGrey,
   },
   infoCard: {
     backgroundColor: '#F8F8F8',
